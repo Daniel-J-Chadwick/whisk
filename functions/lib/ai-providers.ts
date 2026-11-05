@@ -419,7 +419,7 @@ async function streamAnthropic(
   const body: Record<string, unknown> = {
     model,
     max_tokens: maxTokens,
-    temperature,
+    // Claude 5.x models reject `temperature`, so it is not sent to Anthropic.
     stream: true,
     messages: otherMsgs.map((m) => ({ role: m.role, content: m.content })),
   };
@@ -643,7 +643,7 @@ async function callAnthropicText(
   const body: Record<string, unknown> = {
     model,
     max_tokens: maxTokens,
-    temperature,
+    // Claude 5.x models reject `temperature`, so it is not sent to Anthropic.
     messages: otherMsgs.map((m) => ({ role: m.role, content: m.content })),
   };
   if (systemMsgs.length > 0) {
@@ -692,7 +692,7 @@ async function callAnthropicVision(
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
-      temperature,
+      // Claude 5.x models reject `temperature`, so it is not sent to Anthropic.
       messages: [
         {
           role: "user",
