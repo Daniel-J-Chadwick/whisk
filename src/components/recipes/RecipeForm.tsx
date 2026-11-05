@@ -462,6 +462,8 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
         setPhotoImportStep("Reading recipe from photo...");
         const formData = new FormData();
         formData.append("photo", normalizedFile);
+        // Lets the server pick the matching column on meal-kit cards (2P/3P/4P).
+        formData.append("servings", localStorage.getItem("whisk_household_size") ?? "2");
         const token = localStorage.getItem("whisk_token");
         const res = await fetch("/api/import/photo", {
           method: "POST",

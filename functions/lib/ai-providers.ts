@@ -534,6 +534,7 @@ export async function callVisionAI(
 // ── Timeout ───────────────────────────────────────────────
 
 const AI_TIMEOUT_MS = 30000;
+const VISION_TIMEOUT_MS = 90000;
 
 // ── OpenAI-Compatible Format (Groq, OpenAI, xAI, Cerebras) ──
 
@@ -682,7 +683,8 @@ async function callAnthropicVision(
   temperature: number
 ): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
-    signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    // Reading a dense recipe card and writing the full JSON can take longer than 30s.
+    signal: AbortSignal.timeout(VISION_TIMEOUT_MS),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
