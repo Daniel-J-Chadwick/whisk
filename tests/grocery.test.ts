@@ -3,6 +3,8 @@ import {
   buildRecipeItems,
   isStapleIngredient,
   combineAmounts,
+  combineItemAmounts,
+  unitGroupKey,
   isPantryStaple,
   pluralizeForAmount,
   tidyRecipeItems,
@@ -213,5 +215,45 @@ describe("categorizeIngredient aisles", () => {
   });
   test("chile crisp is pantry", () => {
     expect(categorizeIngredient("chile crisp")).toBe("pantry");
+  });
+});
+
+describe("UK and meal-kit units", () => {
+  test("a shop container beats the produce table", () => {
+    expect(label({ amount: "1", unit: "pack", name: "cherry tomatoes" })).toEqual(["1 pack cherry tomatoes"]);
+    expect(label({ name: "1 punnet strawberries" })).toEqual(["1 punnet strawberries"]);
+  });
+  test("pack units parse out of the name", () => {
+    expect(label({ amount: "2", unit: "sachets", name: "chicken stock paste" })).toEqual(["2 sachets chicken stock paste"]);
+    expect(label({ name: "1 tin chopped tomatoes" })[0]).toContain("1 tin");
+  });
+  test("metric weights are kept on items normally bought whole", () => {
+    expect(label({ amount: "40", unit: "g", name: "baby spinach" })).toEqual(["40 g spinach"]);
+  });
+  test("singular and plural units share a row; metric units share one", () => {
+    expect(unitGroupKey("sachets")).toBe(unitGroupKey("sachet"));
+    expect(unitGroupKey("punnets")).toBe(unitGroupKey("punnet"));
+    expect(unitGroupKey("kg")).toBe(unitGroupKey("g"));
+    expect(unitGroupKey("ml")).toBe(unitGroupKey("g"));
+    expect(unitGroupKey("cup")).not.toBe(unitGroupKey("g"));
+  });
+  test("metric amounts combine across units", () => {
+    expect(combineItemAmounts([{ name: "rigatoni", amount: "180", unit: "g" }, { name: "rigatoni", amount: "0.5", unit: "kg" }]))
+      .toEqual({ amount: "680", unit: "g" });
+    expect(combineItemAmounts([{ name: "rice", amount: "600", unit: "g" }, { name: "rice", amount: "500", unit: "g" }]))
+      .toEqual({ amount: "1.1", unit: "kg" });
+    expect(combineItemAmounts([{ name: "milk", amount: "500", unit: "ml" }, { name: "milk", amount: "1", unit: "l" }]))
+      .toEqual({ amount: "1.5", unit: "l" });
+    // Weight and volume of the same item combine at about 1 ml = 1 g, shown in grams
+    expect(combineItemAmounts([{ name: "crème fraîche", amount: "150", unit: "g" }, { name: "crème fraîche", amount: "50", unit: "ml" }]))
+      .toEqual({ amount: "200", unit: "g" });
+  });
+  test("within one recipe, mixed spellings merge", () => {
+    const items = buildRecipeItems([
+      { amount: "1", unit: "sachet", name: "chicken stock paste" },
+      { amount: "2", unit: "sachets", name: "chicken stock paste" },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.amount).toBe("3");
   });
 });

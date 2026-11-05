@@ -179,7 +179,9 @@ const FRACTION_CHARS = "½⅓⅔¼¾⅛⅜⅝⅞";
 const QTY = String.raw`(?:\d+(?:\.\d+)?(?:\s+\d+\s*/\s*\d+|\s*/\s*\d+|\s*[${FRACTION_CHARS}])?|[${FRACTION_CHARS}])`;
 const RANGE_SEP = String.raw`\s*(?:-|–|\bto\b|\bor\b)\s*`;
 const UNITS =
-  "cups?|tbsps?|tsps?|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|g|kg|ml|l|liters?|litres?|quarts?|qts?|pints?|pts?|gallons?|cloves?|cans?|jars?|packages?|pkgs?|bunche?s?|pieces?|slices?|sticks?|heads?|stalks?|ribs?|sprigs?|pinche?s?|dashes?|packets?|envelopes?";
+  "cups?|tbsps?|tsps?|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|g|kg|ml|l|liters?|litres?|quarts?|qts?|pints?|pts?|gallons?|cloves?|cans?|jars?|packages?|pkgs?|bunche?s?|pieces?|slices?|sticks?|heads?|stalks?|ribs?|sprigs?|pinche?s?|dashes?|packets?|envelopes?" +
+  // UK and meal-kit shop units ("1 pack cherry tomatoes", "2 sachets stock paste")
+  "|packs?|punnets?|pots?|tins?|tubs?|sachets?|pouche?s?|cartons?|balls?|trays?|nets?|bags?|bottles?|boxe?s?";
 // amount (optionally a range "1-2", "1 to 2", "1 or 2"), optional "(15-ounce)" size,
 // optional unit, then the name. The unit needs \b so single-letter units (l, g)
 // don't bite the first letter of a name: "9 lasagna noodles" is not 9 l "asagna".

@@ -220,7 +220,55 @@ const PURCHASE_UNITS = new Set([
   "bag", "bags", "box", "boxes", "pint", "pints", "pt", "pts", "quart", "quarts", "qt", "qts",
   "gallon", "gallons", "head", "heads", "bunch", "bunches", "stick", "sticks", "loaf", "loaves",
   "packet", "packets", "envelope", "envelopes",
+  // UK / meal-kit shop units
+  "kilogram", "kilograms", "ml", "millilitre", "millilitres", "milliliter", "milliliters",
+  "l", "litre", "litres", "liter", "liters",
+  "pack", "packs", "punnet", "punnets", "pot", "pots", "tin", "tins", "tub", "tubs",
+  "sachet", "sachets", "pouch", "pouches", "carton", "cartons", "ball", "balls",
+  "tray", "trays", "net", "nets",
 ]);
+
+/** Containers you buy produce in. They beat the produce table ("1 pack cherry tomatoes" stays a pack). */
+const STORE_CONTAINERS = new Set([
+  "pack", "packs", "punnet", "punnets", "pot", "pots", "tin", "tins", "tub", "tubs",
+  "sachet", "sachets", "pouch", "pouches", "carton", "cartons", "ball", "balls", "tray", "trays",
+  "net", "nets", "bag", "bags", "can", "cans", "jar", "jars", "box", "boxes", "packet", "packets",
+  "package", "packages", "pkg", "pkgs", "bottle", "bottles",
+]);
+
+/** Weights and volumes in metric, as written on UK packs. */
+const METRIC_UNITS: Record<string, { base: "g" | "ml"; factor: number }> = {
+  g: { base: "g", factor: 1 }, gram: { base: "g", factor: 1 }, grams: { base: "g", factor: 1 },
+  kg: { base: "g", factor: 1000 }, kilogram: { base: "g", factor: 1000 }, kilograms: { base: "g", factor: 1000 },
+  ml: { base: "ml", factor: 1 }, millilitre: { base: "ml", factor: 1 }, millilitres: { base: "ml", factor: 1 },
+  milliliter: { base: "ml", factor: 1 }, milliliters: { base: "ml", factor: 1 },
+  l: { base: "ml", factor: 1000 }, litre: { base: "ml", factor: 1000 }, litres: { base: "ml", factor: 1000 },
+  liter: { base: "ml", factor: 1000 }, liters: { base: "ml", factor: 1000 },
+};
+
+function isMetric(unit: string | undefined): boolean {
+  return !!unit && unit.toLowerCase().trim() in METRIC_UNITS;
+}
+
+/** One spelling per unit, so "sachets" and "sachet" (or "grams" and "g") land on the same row. */
+export function canonicalUnit(unit: string | undefined): string | undefined {
+  if (!unit) return unit;
+  const u = unit.toLowerCase().trim().replace(/\.$/, "");
+  const metric = METRIC_UNITS[u];
+  if (metric) return metric.factor === 1 ? metric.base : metric.base === "g" ? "kg" : "l";
+  if (STORE_CONTAINERS.has(u) || /^(heads|bunches|cloves|sticks|loaves)$/.test(u)) {
+    if (u === "loaves") return "loaf";
+    if (/(ch|sh|x|s)es$/.test(u)) return u.slice(0, -2);
+    if (u.endsWith("s") && !u.endsWith("ss")) return u.slice(0, -1);
+  }
+  return unit;
+}
+
+/** Rows with the same name and this key are combined. All metric units share one key. */
+export function unitGroupKey(unit: string | undefined): string {
+  if (isMetric(unit)) return "metric";
+  return (canonicalUnit(unit) ?? "").toLowerCase().trim();
+}
 
 /** Parse "2", "1 ½", "1/2", "1-2" (takes the high end) into a number. */
 export function parseQuantity(amount: string | undefined): number | null {
@@ -332,9 +380,16 @@ function convertOne(amount: string | undefined, unit: string | undefined, rawNam
   const u = unit?.toLowerCase().replace(/\.$/, "");
   const entry = findEntry(name);
 
+  // A shop container beats the produce table: "1 pack cherry tomatoes", not "1 tomato".
+  if (entry && u && STORE_CONTAINERS.has(u)) {
+    return { name, amount: countString(qty ?? 1), unit };
+  }
+
   if (entry) {
     switch (entry.kind) {
       case "package":
+        // Keep a metric weight or volume ("80 g baby spinach"); otherwise just buy one.
+        if (u && isMetric(u) && qty) return { name: entry.name, amount, unit };
         return { name: entry.name };
       case "bunch":
         if (u === "bunch" || u === "bunches") return { name: entry.name, amount: countString(qty ?? 1), unit: "bunch" };
@@ -351,6 +406,7 @@ function convertOne(amount: string | undefined, unit: string | undefined, rawNam
         if (u && (u === "lb" || u === "lbs" || u === "pound" || u === "pounds" || u === "oz" || u === "ounces")) {
           return { name: entry.name, amount, unit };
         }
+        if (u && isMetric(u) && qty) return { name: entry.name, amount, unit };
         if (/\bjuice\b/.test(name) && entry.juiceTbspPerEach && u && TBSP_PER_UNIT[u] && qty) {
           return { name: entry.name, amount: countString((qty * TBSP_PER_UNIT[u]!) / entry.juiceTbspPerEach) };
         }
@@ -461,17 +517,55 @@ export function combineAmounts(amounts: (string | undefined)[], unit: string | u
   return formatSum(total);
 }
 
+function formatMetric(total: number, base: "g" | "ml"): { amount: string; unit: string } {
+  if (total >= 1000) return { amount: formatSum(Math.round(total / 10) / 100), unit: base === "g" ? "kg" : "l" };
+  return { amount: formatSum(Math.round(total * 10) / 10), unit: base };
+}
+
+/**
+ * Combine the amounts of rows that share a name and unitGroupKey. Metric rows are
+ * converted to grams or millilitres and summed (treating 1 ml as about 1 g when a
+ * recipe gives weight and another volume), then shown as kg or l from 1000 up.
+ * Other rows use combineAmounts. Returns null when the amounts can't be combined.
+ */
+export function combineItemAmounts(items: ListLikeItem[]): { amount?: string; unit?: string } | null {
+  const first = items[0];
+  if (!first) return { amount: undefined, unit: undefined };
+  if (items.every((i) => isMetric(i.unit))) {
+    let grams = 0;
+    let millilitres = 0;
+    let any = false;
+    for (const item of items) {
+      if (!item.amount || item.amount.trim() === "") continue;
+      const qty = parseQuantity(item.amount);
+      if (qty === null) return null;
+      const metric = METRIC_UNITS[item.unit!.toLowerCase().trim()]!;
+      if (metric.base === "g") grams += qty * metric.factor;
+      else millilitres += qty * metric.factor;
+      any = true;
+    }
+    if (!any) return { amount: undefined, unit: canonicalUnit(first.unit) };
+    return formatMetric(grams + millilitres, grams > 0 ? "g" : "ml");
+  }
+  const combined = combineAmounts(items.map((i) => i.amount), first.unit);
+  if (combined === null) return null;
+  return { amount: combined, unit: first.unit };
+}
+
 /**
  * Add `next` into `items`, combining with an existing item of the same name and
- * unit. Returns true if it merged.
+ * unit (all metric units count as one). Returns true if it merged.
  */
 export function mergeInto<T extends ListLikeItem>(items: T[], next: T): boolean {
   const key = next.name.toLowerCase();
-  const unit = (next.unit ?? "").toLowerCase();
-  const existing = items.find((i) => i.name.toLowerCase() === key && (i.unit ?? "").toLowerCase() === unit);
+  const unit = unitGroupKey(next.unit);
+  const existing = items.find((i) => i.name.toLowerCase() === key && unitGroupKey(i.unit) === unit);
   if (!existing) return false;
-  const combined = combineAmounts([existing.amount, next.amount], existing.unit);
-  if (combined) existing.amount = combined;
+  const combined = combineItemAmounts([existing, next]);
+  if (combined?.amount) {
+    existing.amount = combined.amount;
+    existing.unit = combined.unit;
+  }
   return true;
 }
 

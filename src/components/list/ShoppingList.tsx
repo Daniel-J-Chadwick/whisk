@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ShoppingList as ShoppingListType, ShoppingCategory, ShoppingItem, RecipeIndexEntry, Ingredient } from "../../types";
 import { CATEGORY_LABELS, CATEGORY_ORDER, CATEGORY_EMOJI } from "../../lib/categories";
 import { abbreviateName, abbreviateUnit } from "../../lib/abbreviate";
-import { combineAmounts, isStapleIngredient, pluralizeForAmount } from "../../lib/grocery";
+import { combineItemAmounts, isStapleIngredient, pluralizeForAmount, unitGroupKey } from "../../lib/grocery";
 import { classNames, decodeEntities } from "../../lib/utils";
 import { EmptyState } from "../ui/EmptyState";
 import { Check, XMark, ShoppingCart, ArrowUpDown, Sparkles, Trash, Camera, MagnifyingGlass, SquareCheck, ClipboardList, RefreshCw, ChevronDown, ChevronUp, EllipsisVertical } from "../ui/Icon";
@@ -181,8 +181,8 @@ export function ShoppingList({
     const groups = new Map<string, ShoppingItem[]>();
     for (const item of list.items) {
       const normName = abbreviateName(item.name).toLowerCase();
-      const normUnit = (item.unit ?? "").toLowerCase().trim();
-      const key = `${normName}||${normUnit}`;
+      // "sachet"/"sachets" share a row, and all metric units (g, kg, ml, l) combine
+      const key = `${normName}||${unitGroupKey(item.unit)}`;
       const arr = groups.get(key) ?? [];
       arr.push(item);
       groups.set(key, arr);
@@ -196,14 +196,15 @@ export function ShoppingList({
       }
       // Try to combine amounts
       const first = items[0]!;
-      const combined = combineAmounts(items.map((i) => i.amount), first.unit);
+      const combined = combineItemAmounts(items);
       if (combined !== null) {
         // Collect all source recipe IDs for the combined item
         const sourceIds = items.map((i) => i.sourceRecipeId).filter(Boolean);
         const allChecked = items.every((i) => i.checked);
         result.push({
           ...first,
-          amount: combined ?? first.amount,
+          amount: combined.amount ?? first.amount,
+          unit: combined.amount ? combined.unit : first.unit,
           checked: allChecked,
           // Store sub-item IDs in a custom field for toggling
           _mergedIds: items.map((i) => i.id),
