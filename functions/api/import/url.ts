@@ -437,8 +437,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       if (groupedPlugin) backfillRecipeData(recipeData, groupedPlugin);
     }
 
-    // Collect all image URLs: primary + additional from the page
-    const allImageUrls = extractAllImageUrls(recipeData, html);
+    // Collect all image URLs: primary + additional from the page.
+    // On HelloFresh, step photos go on their steps (below) and page furniture is dropped.
+    const isHelloFresh = helloFreshRecipeId(url) !== null;
+    const allImageUrls = extractAllImageUrls(recipeData, html)
+      .filter((u) => !(isHelloFresh && isHelloFreshNonDishImage(u)));
     let thumbnailUrl = allImageUrls[0];
 
     // Download images and store in R2 if requested
@@ -484,7 +487,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const parsedIngredients = parseIngredients(recipeData.recipeIngredient ?? []);
     const tags = generateTags(recipeData, parsedIngredients);
     const rating = parseAggregateRating(recipeData.aggregateRating);
-    const { steps, notes } = parseInstructions(recipeData.recipeInstructions ?? []);
+    const rawInstructions = recipeData.recipeInstructions ?? [];
+    const { steps: parsedSteps, notes } = parseInstructions(rawInstructions);
+    const steps: { text: string; group?: string; photoUrl?: string }[] = parsedSteps;
+
+    // HelloFresh: attach each numbered step's photo to its step.
+    if (isHelloFresh) {
+      const stepPhotos = extractHelloFreshStepPhotos(html, url);
+      const pairing = pairStepPhotos(
+        rawInstructions,
+        steps.length,
+        stepPhotos.length,
+        (raw) => parseInstructions([raw]).steps.length
+      );
+      if (pairing) {
+        const photoUrls = await Promise.all(
+          stepPhotos.map((p) =>
+            downloadImage ? storeImportedImage(env, [p.url, p.fallback]) : Promise.resolve(p.url)
+          )
+        );
+        pairing.forEach((stepIndex, photoIndex) => {
+          const photoUrl = photoUrls[photoIndex];
+          const step = steps[stepIndex];
+          if (photoUrl && step) step.photoUrl = photoUrl;
+        });
+      }
+    }
 
     const recipe = {
       title: recipeData.name ?? "",
@@ -2909,4 +2937,91 @@ async function tryNytCookingApi(
   } catch {
     return null;
   }
+}
+
+// ── HelloFresh step photos ──────────────────────────────────
+// HelloFresh pages publish one photo per numbered step at
+// .../hellofresh_s3/<recipe id>/step-<hash>.jpg, in step order. JSON-LD carries the
+// step text but not these photos, so they are paired with the parsed steps here.
+
+const HELLOFRESH_HOST = /(^|\.)hellofresh\.[a-z.]+$/i;
+
+/** The 24-hex recipe id at the end of a HelloFresh recipe URL, or null for other sites. */
+export function helloFreshRecipeId(pageUrl: string): string | null {
+  try {
+    const u = new URL(pageUrl);
+    if (!HELLOFRESH_HOST.test(u.hostname)) return null;
+    const match = /-([0-9a-f]{24})\/?$/i.exec(u.pathname);
+    return match ? match[1]!.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True for HelloFresh images that belong to steps or page furniture, not the dish. */
+export function isHelloFreshNonDishImage(imageUrl: string): boolean {
+  return /hellofresh/i.test(imageUrl) && (/\/step-[A-Za-z0-9_-]+\.(?:jpe?g|png|webp)/i.test(imageUrl) || /hellofresh_website\//i.test(imageUrl));
+}
+
+/**
+ * Step photo URLs for a HelloFresh recipe, in page order, one per distinct photo.
+ * Matches plain and JSON-escaped paths (`/` or `/`) and builds a 1200px URL on
+ * HelloFresh's image CDN, plus the size the page itself used as a fallback.
+ */
+export function extractHelloFreshStepPhotos(html: string, pageUrl: string): { url: string; fallback: string }[] {
+  const recipeId = helloFreshRecipeId(pageUrl);
+  if (!recipeId) return [];
+  const pattern = new RegExp(`${recipeId}(?:/|\\\\u002F|\\\\/)(step-[A-Za-z0-9_-]+\\.(?:jpe?g|png|webp))`, "gi");
+  const seen = new Set<string>();
+  const photos: { url: string; fallback: string }[] = [];
+  for (let m = pattern.exec(html); m; m = pattern.exec(html)) {
+    const file = m[1]!;
+    if (seen.has(file.toLowerCase())) continue;
+    seen.add(file.toLowerCase());
+    const path = `hellofresh_s3/${recipeId}/${file}`;
+    photos.push({
+      url: `https://media.hellofresh.com/w_1200,q_auto,f_auto,c_limit,fl_lossy/${path}`,
+      fallback: `https://media.hellofresh.com/w_750,q_auto,f_auto,c_limit,fl_lossy/${path}`,
+    });
+  }
+  return photos;
+}
+
+/**
+ * Pair step photos with parsed steps. Returns the index of the step each photo belongs to,
+ * or null when the steps can't be lined up with the photos safely.
+ * - Same number of parsed steps as photos: photo i → step i.
+ * - Same number of raw JSON-LD steps as photos (some split into several parsed steps):
+ *   photo i → the first parsed step that came from raw step i.
+ */
+export function pairStepPhotos(
+  rawInstructions: unknown[],
+  parsedStepCount: number,
+  photoCount: number,
+  parseOne: (raw: unknown) => number
+): number[] | null {
+  if (photoCount === 0) return null;
+  if (parsedStepCount === photoCount) return Array.from({ length: photoCount }, (_, i) => i);
+  if (rawInstructions.length !== photoCount) return null;
+  const firstIndexes: number[] = [];
+  let offset = 0;
+  for (const raw of rawInstructions) {
+    const count = parseOne(raw);
+    if (count === 0) return null;
+    firstIndexes.push(offset);
+    offset += count;
+  }
+  return offset === parsedStepCount ? firstIndexes : null;
+}
+
+/** Fetch an image and store it in R2 under photos/import-<hash>; returns the app path or null. */
+async function storeImportedImage(env: Env, candidates: string[]): Promise<string | null> {
+  for (const imgUrl of candidates) {
+    const fetched = await safeFetchImage(imgUrl);
+    if (!fetched) continue;
+    const key = `photos/import-${(await hashUrl(imgUrl)).slice(0, 12)}.${imageExtension(fetched.contentType)}`;
+    await env.WHISK_R2.put(key, fetched.buffer, { httpMetadata: { contentType: fetched.contentType } });
+    return `/${key}`;
+  }
+  return null;
 }
