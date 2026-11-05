@@ -8,6 +8,7 @@ import { firstHttpUrl } from "../../lib/bookmarklet";
 import { pendingImportFromUrl } from "../../lib/pending-import";
 import { useBlockedImport } from "../import/BlockedImportFlow";
 import { compressImage } from "../../lib/compress";
+import { extractPdfPhotos, makePreview, type PdfPhoto } from "../../lib/pdfImages";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { TextArea } from "../ui/TextArea";
@@ -474,9 +475,18 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
           prepared.push(new File([blob], `recipe-${index + 1}.jpg`, { type: "image/jpeg" }));
         }
 
-        setPhotoImportStep(picked.length > 1 ? `Reading recipe from ${picked.length} files...` : "Reading recipe from photo...");
+        // From a PDF, also pull out its photos so the AI can match them to the dish and each step.
+        const pdfFile = picked.find((f) => f.type === "application/pdf");
+        const pdfPhotos: PdfPhoto[] = pdfFile ? await extractPdfPhotos(pdfFile).catch(() => []) : [];
+        const previews = await Promise.all(pdfPhotos.map((p) => makePreview(p).catch(() => null)));
+
+        setPhotoImportStep(picked.length > 1 ? `Reading recipe from ${picked.length} files...` : pdfFile ? "Reading recipe from PDF..." : "Reading recipe from photo...");
         const formData = new FormData();
         for (const file of prepared) formData.append("photo", file);
+        // Candidate numbering must match pdfPhotos, so skip none: a failed preview sends the original.
+        previews.forEach((preview, i) => {
+          formData.append("candidate", preview ?? pdfPhotos[i]!.blob, `candidate-${i + 1}.jpg`);
+        });
         // Lets the server pick the matching column on meal-kit cards (2P/3P/4P).
         formData.append("servings", localStorage.getItem("whisk_household_size") ?? "2");
         const token = localStorage.getItem("whisk_token");
@@ -490,11 +500,45 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
           throw new Error((data.error as string) ?? "Failed to read recipe from photo");
         }
 
+        // Upload the PDF photos the AI matched: the dish becomes the recipe photo, the rest go on their steps.
+        const photoFor = (n: unknown): PdfPhoto | undefined =>
+          typeof n === "number" ? pdfPhotos[n - 1] : undefined;
+        const uploadPdfPhoto = async (photo: PdfPhoto, preset: "hero" | "step"): Promise<string | undefined> => {
+          try {
+            const source = new File([photo.blob], "pdf-photo.jpg", { type: "image/jpeg" });
+            const compressed = await compressImage(source, preset);
+            const uploaded = await api.upload<{ url: string }>("/upload", compressed, `photo-${Date.now()}-${preset}.webp`);
+            return uploaded.url;
+          } catch {
+            return undefined; // A failed photo upload shouldn't lose the recipe
+          }
+        };
+        const rawSteps = Array.isArray(data.steps) ? (data.steps as (Step & { photo?: number | null })[]) : [];
+        const heroPhoto = photoFor(data.heroImage);
+        if (heroPhoto || rawSteps.some((s) => photoFor(s.photo))) {
+          setPhotoImportStep("Adding photos...");
+        }
+        const [heroUrl, stepPhotoUrls] = await Promise.all([
+          heroPhoto ? uploadPdfPhoto(heroPhoto, "hero") : Promise.resolve(undefined),
+          Promise.all(rawSteps.map((s) => {
+            const photo = photoFor(s.photo);
+            return photo ? uploadPdfPhoto(photo, "step") : Promise.resolve(undefined);
+          })),
+        ]);
+        if (heroUrl) {
+          setPhotos((prev) => [{ url: heroUrl, isPrimary: true }, ...prev.map((p) => ({ ...p, isPrimary: false }))]);
+        }
+
         setPhotoImportStep("Populating recipe fields...");
         if (data.title) setTitle(data.title as string);
         if (data.description) setDescription(data.description as string);
         if (Array.isArray(data.ingredients) && data.ingredients.length) setIngredients(data.ingredients as Ingredient[]);
-        if (Array.isArray(data.steps) && data.steps.length) setSteps(data.steps as Step[]);
+        if (rawSteps.length) {
+          setSteps(rawSteps.map(({ photo: _photo, ...step }, i) => {
+            const photoUrl = stepPhotoUrls[i];
+            return photoUrl ? { ...step, photoUrl } : step;
+          }));
+        }
         if (data.prepTime) setPrepTime(String(data.prepTime));
         if (data.cookTime) setCookTime(String(data.cookTime));
         if (data.servings) setServings(String(data.servings));
@@ -1016,6 +1060,23 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
                     onChange={(e) => updateStep(i, "text", e.target.value)}
                     rows={2}
                   />
+                  {step.photoUrl && (
+                    <div className="relative inline-block">
+                      <img
+                        src={step.photoUrl}
+                        alt={`Step ${i + 1}`}
+                        className="h-20 w-auto rounded-lg border border-stone-200 dark:border-stone-700 object-cover"
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remove photo from step ${i + 1}`}
+                        onClick={() => setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, photoUrl: undefined } : s)))}
+                        className="absolute -top-2 -right-2 rounded-full bg-white p-0.5 text-stone-500 shadow hover:text-red-500 dark:bg-stone-800 dark:text-stone-300"
+                      >
+                        <XMark className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {steps.length > 1 && (
                   <button

@@ -677,6 +677,8 @@ async function callAnthropicText(
 export interface VisionAttachment {
   base64: string;
   mimeType: string;
+  /** Optional text placed just before this attachment, e.g. "Candidate photo 3:". */
+  label?: string;
 }
 
 /**
@@ -727,11 +729,13 @@ async function callAnthropicVisionMulti(
   attachments: VisionAttachment[],
   maxTokens: number
 ): Promise<string> {
-  const attachmentBlocks = attachments.map((a) =>
-    a.mimeType === "application/pdf"
-      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.base64 } }
-      : { type: "image", source: { type: "base64", media_type: a.mimeType, data: a.base64 } }
-  );
+  const attachmentBlocks = attachments.flatMap((a) => {
+    const block =
+      a.mimeType === "application/pdf"
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.base64 } }
+        : { type: "image", source: { type: "base64", media_type: a.mimeType, data: a.base64 } };
+    return a.label ? [{ type: "text", text: a.label }, block] : [block];
+  });
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     // Reading a dense recipe card and writing the full JSON can take longer than 30s.
     signal: AbortSignal.timeout(VISION_TIMEOUT_MS),

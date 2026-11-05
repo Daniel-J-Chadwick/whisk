@@ -7,6 +7,7 @@ import {
 } from "../../lib/ai-providers";
 
 const MAX_FILES = 4;
+const MAX_CANDIDATES = 12;
 // Anthropic accepts up to 5 MB of base64 per image (about 3.75 MB of raw bytes).
 const MAX_IMAGE_BYTES = 3_700_000;
 const MAX_PDF_BYTES = 20_000_000;
@@ -44,7 +45,17 @@ function cleanNumber(value: unknown): number | undefined {
 }
 
 /** Tidy the model's output so the form gets clean, typed values. */
-function normalizeResult(raw: PhotoRecipeResult): PhotoRecipeResult {
+function normalizeResult(raw: PhotoRecipeResult, candidateCount: number): PhotoRecipeResult {
+  // Photo numbers must point at a real candidate, and each photo is used once.
+  const usedPhotos = new Set<number>();
+  const takePhoto = (value: unknown): number | null => {
+    const n = typeof value === "number" ? value : parseInt(String(value ?? ""), 10);
+    if (!Number.isInteger(n) || n < 1 || n > candidateCount || usedPhotos.has(n)) return null;
+    usedPhotos.add(n);
+    return n;
+  };
+  const heroImage = takePhoto(raw.heroImage);
+
   const ingredients = (Array.isArray(raw.ingredients) ? raw.ingredients : [])
     .map((ing) => {
       const name = cleanText(ing?.name);
@@ -68,6 +79,7 @@ function normalizeResult(raw: PhotoRecipeResult): PhotoRecipeResult {
         text,
         timerMinutes: cleanNumber(step.timerMinutes) ?? null,
         group: cleanText(step.group) ?? null,
+        photo: takePhoto(step.photo),
       };
     })
     .filter((step): step is NonNullable<typeof step> => step !== null);
@@ -80,6 +92,7 @@ function normalizeResult(raw: PhotoRecipeResult): PhotoRecipeResult {
   return {
     ...raw,
     title: cleanText(raw.title) ?? "",
+    heroImage,
     description: cleanText(raw.description) ?? null,
     ingredients,
     steps,
@@ -104,7 +117,9 @@ interface PhotoRecipeResult {
   title: string;
   description?: string | null;
   ingredients: Array<{ name: string; amount?: string | null; unit?: string | null; group?: string | null; category?: string | null }>;
-  steps: Array<{ text: string; timerMinutes?: number | null; group?: string | null }>;
+  steps: Array<{ text: string; timerMinutes?: number | null; group?: string | null; photo?: number | null }>;
+  /** 1-based index into the candidate photos sent with a PDF, or null. */
+  heroImage?: number | null;
   prepTime?: number | null;
   cookTime?: number | null;
   servings?: number | null;
@@ -194,16 +209,43 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
     attachments.push({ base64: toBase64(bytes), mimeType: file.type || "image/jpeg" });
   }
-  const photoSizeKB = Math.round(totalBytes / 1024);
   const hasPdf = attachments.some((a) => a.mimeType === "application/pdf");
+  const pageCount = attachments.length;
+
+  // Photos the browser pulled out of a PDF, for matching to the dish and steps.
+  // Only Claude sees every attachment, so only ask it to match when Anthropic is the provider.
+  const candidateFiles = fnConfig.provider === "anthropic"
+    ? formData.getAll("candidate").filter((f): f is File => typeof f !== "string" && f.type.startsWith("image/")).slice(0, MAX_CANDIDATES)
+    : [];
+  for (const [i, file] of candidateFiles.entries()) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.byteLength > MAX_IMAGE_BYTES) continue;
+    totalBytes += bytes.byteLength;
+    attachments.push({ base64: toBase64(bytes), mimeType: file.type, label: `Candidate photo ${i + 1}:` });
+  }
+  const candidateCount = candidateFiles.length;
+  const photoSizeKB = Math.round(totalBytes / 1024);
   // Household size from the client, used to pick the right column on meal-kit cards (2P/3P/4P).
   const servingsRaw = parseInt(String(formData.get("servings") ?? ""), 10);
   const preferredServings = Number.isFinite(servingsRaw) && servingsRaw > 0 && servingsRaw <= 12 ? servingsRaw : 2;
   const uploadProcessMs = Date.now() - uploadStart;
 
+  const photoRules = candidateCount > 0
+    ? [
+        "",
+        `Photos: after the recipe there are ${candidateCount} candidate photos taken from the PDF, each introduced by "Candidate photo N:".`,
+        '- Add a top-level field "heroImage": the number of the photo showing the finished dish (usually the largest one on the front), or null.',
+        '- Add a "photo" field to each step: the number of the candidate photo that illustrates that step on the card, or null.',
+        "- Match by what the photo shows and where it sits on the card (step photos usually sit beside or above their numbered step).",
+        "- Use each photo at most once. If a card section has several steps but one photo, give it to the first step of that section.",
+        "- Leave logos, icons, ingredient line-ups and anything that isn't clearly the dish or a step as null.",
+        "- When the card has numbered steps with one photo each, keep one step per numbered step so every photo has a step.",
+      ]
+    : [];
+
   const prompt = [
-    attachments.length > 1
-      ? `You are a recipe extraction assistant for a cooking app. These ${attachments.length} attachments (photos and/or PDF pages) are parts of ONE recipe, for example the front and back of a recipe card. Combine them into a single complete recipe.`
+    pageCount > 1
+      ? `You are a recipe extraction assistant for a cooking app. The first ${pageCount} attachments (photos and/or PDF pages) are parts of ONE recipe, for example the front and back of a recipe card. Combine them into a single complete recipe.`
       : hasPdf
         ? "You are a recipe extraction assistant for a cooking app. Extract the complete recipe from this PDF (it may be a printed recipe card with a front and back page)."
         : "You are a recipe extraction assistant for a cooking app. Extract the complete recipe from this photo of a handwritten or printed recipe.",
@@ -251,6 +293,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     "- category is the supermarket aisle for the shopping list: produce (fresh fruit, veg, herbs, salad), meat (meat and fish), dairy (milk, cheese, cream, crème fraîche, eggs, butter), bakery (bread, wraps, baguettes), frozen, pantry (dry goods, tins, pasta, rice, sauces, pastes, stock, spices, oil, condiments), beverages, snacks, other.",
     "- Before answering, check every quantity against the column you chose and every ingredient against the steps, and fix any mismatch.",
     "- Keep the JSON compact: no commentary before or after it.",
+    ...photoRules,
   ].join("\n");
 
   const baseLog: Omit<ScanLogEntry, "success" | "durationMs" | "error"> = {
@@ -278,7 +321,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start === -1 || end <= start) {
       throw new Error(`AI reply contained no JSON (${content.length} chars)`);
     }
-    const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length));
+    const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length), candidateCount);
 
     console.log(`[Whisk] RecipePhoto config=${configMs}ms upload=${uploadProcessMs}ms vision=${visionMs}ms total=${totalMs}ms photo=${photoSizeKB}KB ingredients=${result.ingredients?.length ?? 0} steps=${result.steps?.length ?? 0}`);
     waitUntil(logScanInteraction(env.WHISK_KV, {
