@@ -422,7 +422,7 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
   );
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-24 lg:max-w-5xl lg:mx-auto">
       {/* Header */}
       <div className="sticky top-0 z-30 flex items-center justify-between bg-white/95 backdrop-blur-sm dark:bg-stone-950/95 border-b border-stone-200 dark:border-stone-800 px-4 py-3 pt-[calc(var(--sat)+0.75rem)]">
         <button
@@ -1194,7 +1194,7 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
 
       {/* Shopping list toast */}
       {shoppingToast && (
-        <div className="fixed bottom-20 inset-x-0 z-50 max-w-6xl mx-auto px-4">
+        <div className="fixed bottom-20 inset-x-0 z-50 max-w-6xl mx-auto px-4 lg:left-56 lg:bottom-6 lg:max-w-xl">
           <div className="flex items-center justify-between rounded-lg bg-stone-800 px-4 py-3 text-sm text-white shadow-lg dark:bg-stone-700">
             <span>{shoppingToast.message}</span>
             {shoppingToast.recipeId && (

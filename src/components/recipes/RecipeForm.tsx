@@ -610,7 +610,7 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
   }
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-24 lg:max-w-3xl lg:mx-auto">
       <div className="sticky top-0 z-30 flex items-center justify-between bg-white/95 backdrop-blur-sm dark:bg-stone-950/95 border-b border-stone-200 dark:border-stone-800 px-4 py-3 pt-[calc(var(--sat)+0.75rem)]">
         <button
           onClick={() => navigate(-1)}

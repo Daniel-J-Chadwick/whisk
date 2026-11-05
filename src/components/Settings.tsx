@@ -380,7 +380,7 @@ export function Settings({ theme, onSetTheme, accentOverride, onSetAccent, style
   const inactiveClass = "border-stone-300 text-stone-600 dark:border-stone-600 dark:text-stone-400";
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-24 lg:max-w-3xl lg:mx-auto">
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm dark:bg-stone-950/95 border-b border-stone-200 dark:border-stone-800 pt-[var(--sat)]">
         <div className="flex items-center gap-3 px-4 py-3">
           <button

@@ -10,6 +10,8 @@ interface TimerBarProps {
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
   onDismissCompleted: () => void;
+  /** Shift the bar right of the desktop sidebar (lg+). Off in cook mode, where the sidebar is hidden. */
+  offsetForSidebar?: boolean;
 }
 
 export function TimerBar({
@@ -18,6 +20,7 @@ export function TimerBar({
   onResume,
   onCancel,
   onDismissCompleted,
+  offsetForSidebar = false,
 }: TimerBarProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -31,7 +34,7 @@ export function TimerBar({
   const displayTimer = active[0] ?? paused[0] ?? completed[0];
 
   return (
-    <div className="fixed top-0 inset-x-0 z-50">
+    <div className={classNames("fixed top-0 inset-x-0 z-50", offsetForSidebar && "lg:left-56")}>
       <div className="max-w-6xl mx-auto">
       {/* Collapsed bar */}
       <button

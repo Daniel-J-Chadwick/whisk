@@ -171,6 +171,7 @@ function AppShell({
   const timers = useTimers();
   const tags = useTags();
   const location = useLocation();
+  const isCookMode = /^\/recipes\/[^/]+\/cook\/?$/.test(location.pathname);
   useDiscoverBadge(location.pathname === "/discover");
 
   // Demo mode: anyone who isn't the demo owner sees the demo UI (pill, toasts,
@@ -229,7 +230,8 @@ function AppShell({
 
   return (
     <div className="min-h-screen bg-stone-100 dark:bg-black">
-      <div className="max-w-6xl mx-auto min-h-screen bg-white dark:bg-stone-950 shadow-[0_0_40px_rgba(0,0,0,0.08)] dark:shadow-[0_0_40px_rgba(0,0,0,0.4)]">
+      {/* Phone/tablet: centred column. Desktop (lg+): full width beside the sidebar nav (w-56 in BottomNav). */}
+      <div className={`max-w-6xl mx-auto min-h-screen bg-white dark:bg-stone-950 shadow-[0_0_40px_rgba(0,0,0,0.08)] dark:shadow-[0_0_40px_rgba(0,0,0,0.4)] lg:max-w-none lg:shadow-none ${isCookMode ? "" : "lg:mr-0 lg:ml-56"}`}>
       {/* Timer bar */}
       {timers.hasActiveTimers && (
         <TimerBar
@@ -238,11 +240,12 @@ function AppShell({
           onResume={timers.resumeTimer}
           onCancel={timers.cancelTimer}
           onDismissCompleted={timers.dismissCompleted}
+          offsetForSidebar={!isCookMode}
         />
       )}
 
       <BlockedImportProvider recipes={recipes.recipes}>
-      <main>
+      <main className="lg:max-w-7xl lg:mx-auto">
       <Suspense fallback={<RouteSkeleton />}>
         <Routes>
           {/* Recipes — eagerly loaded, it's the home screen */}

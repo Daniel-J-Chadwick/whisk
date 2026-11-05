@@ -683,7 +683,8 @@ export function SuggestChat({ chatEnabled = false, recipes = [], mealPlan = [], 
   }, [recipes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex flex-col min-h-screen pb-16">
+    <div className="flex flex-col min-h-screen pb-16 lg:pb-0 lg:max-w-3xl lg:mx-auto">
+      {/* lg: chat held to a readable width; the sticky input sits flush at the bottom. */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm dark:bg-stone-950/95 border-b border-stone-200 dark:border-stone-800 px-4 pt-[var(--sat)] wk-header-decor relative">
         <div className="flex items-center justify-between py-3">
           <button onClick={() => navigate("/settings")} title="Settings" className="flex items-center gap-1.5">
@@ -1508,7 +1509,7 @@ export function SuggestChat({ chatEnabled = false, recipes = [], mealPlan = [], 
       {/* Sticky input bar — always visible at bottom */}
       <div className={classNames(
         "sticky left-0 right-0 bg-white dark:bg-stone-950 border-t border-stone-200 dark:border-stone-800 px-4 py-3",
-        isKeyboardOpen ? "bottom-0 pb-1" : "bottom-[calc(3.5rem+var(--sab))] pb-3"
+        isKeyboardOpen ? "bottom-0 pb-1" : "bottom-[calc(3.5rem+var(--sab))] pb-3 lg:bottom-0"
       )}>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input

@@ -718,7 +718,7 @@ export function MealPlan({
 
         {planLayout === "tiles" ? (
           /* Tile view — compact grid */
-          <div className="grid grid-cols-2 gap-2 px-4 py-3">
+          <div className="grid grid-cols-2 gap-2 px-4 py-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-3">
             {weekDates.map((date) => {
               const dateStr = toDateString(date);
               const isToday = dateStr === today;
@@ -872,7 +872,7 @@ export function MealPlan({
           </div>
         ) : (
           /* List view — detailed day-by-day */
-          <div className="px-4 py-3 space-y-4">
+          <div className="px-4 py-3 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-5">
           {weekDates.map((date) => {
             const dateStr = toDateString(date);
             const isToday = dateStr === today;

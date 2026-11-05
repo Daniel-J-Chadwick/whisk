@@ -238,7 +238,7 @@ export function ImportRecipes({ onImportComplete }: ImportRecipesProps) {
   const currentIndex = results.findIndex((r) => r.status === "importing");
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full lg:max-w-3xl lg:mx-auto">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm dark:bg-stone-950/95 border-b border-stone-200 dark:border-stone-800 px-4 pt-(--sat)">
         <div className="flex items-center gap-3 py-3">
