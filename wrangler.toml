@@ -9,7 +9,7 @@ pages_build_output_dir = "dist"
 # KV Namespaces - create with: npx wrangler kv namespace create WHISK_KV
 [[kv_namespaces]]
 binding = "WHISK_KV"
-id = "9961b213d1114876af09f83f3884aeb9" # Fill in after running: npx wrangler kv namespace create WHISK_KV
+id = "a46a8772abc64c7d831becf9e9179f99" # whisk-data
 
 # R2 Bucket - create with: npx wrangler r2 bucket create whisk-photos
 [[r2_buckets]]
@@ -20,10 +20,12 @@ bucket_name = "whisk-photos"
 [ai]
 binding = "AI"
 
-# Vectorize index - create with: npx wrangler vectorize create whisk-recipes --dimensions=768 --metric=cosine
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "whisk-recipes"
+# Vectorize index (optional semantic search). Disabled until the index exists.
+# To enable: npx wrangler vectorize create whisk-recipes --dimensions=768 --metric=cosine
+# then uncomment the block below.
+# [[vectorize]]
+# binding = "VECTORIZE"
+# index_name = "whisk-recipes"
 
 [vars]
 ENVIRONMENT = "production"
