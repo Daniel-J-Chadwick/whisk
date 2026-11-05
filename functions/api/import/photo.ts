@@ -1,9 +1,100 @@
 import {
   loadAIConfig,
   resolveConfig,
-  callVisionAI,
+  callVisionAIMulti,
   type ProviderEnv,
+  type VisionAttachment,
 } from "../../lib/ai-providers";
+
+const MAX_FILES = 4;
+// Anthropic accepts up to 5 MB of base64 per image (about 3.75 MB of raw bytes).
+const MAX_IMAGE_BYTES = 3_700_000;
+const MAX_PDF_BYTES = 20_000_000;
+const SHOPPING_CATEGORIES = new Set(["produce", "dairy", "meat", "pantry", "snacks", "frozen", "bakery", "beverages", "other"]);
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** Base64 without building one string per byte (keeps CPU time low on large photos and PDFs). */
+function toBase64(bytes: Uint8Array): string {
+  const native = bytes as Uint8Array & { toBase64?: () => string };
+  if (typeof native.toBase64 === "function") return native.toBase64();
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/** Text field from the model: trimmed, footnote markers removed, empty → undefined. */
+function cleanText(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const text = String(value).replace(/\*+/g, "").replace(/\s+/g, " ").trim();
+  return text && text.toLowerCase() !== "null" ? text : undefined;
+}
+
+function cleanNumber(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : parseFloat(String(value ?? ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
+}
+
+/** Tidy the model's output so the form gets clean, typed values. */
+function normalizeResult(raw: PhotoRecipeResult): PhotoRecipeResult {
+  const ingredients = (Array.isArray(raw.ingredients) ? raw.ingredients : [])
+    .map((ing) => {
+      const name = cleanText(ing?.name);
+      if (!name) return null;
+      const category = cleanText(ing.category)?.toLowerCase();
+      return {
+        name,
+        amount: cleanText(ing.amount) ?? null,
+        unit: cleanText(ing.unit)?.replace(/^\((.*)\)$/, "$1") ?? null,
+        group: cleanText(ing.group) ?? null,
+        category: category && SHOPPING_CATEGORIES.has(category) ? category : null,
+      };
+    })
+    .filter((ing): ing is NonNullable<typeof ing> => ing !== null);
+
+  const steps = (Array.isArray(raw.steps) ? raw.steps : [])
+    .map((step) => {
+      const text = cleanText(step?.text);
+      if (!text) return null;
+      return {
+        text,
+        timerMinutes: cleanNumber(step.timerMinutes) ?? null,
+        group: cleanText(step.group) ?? null,
+      };
+    })
+    .filter((step): step is NonNullable<typeof step> => step !== null);
+
+  const difficulty = cleanText(raw.difficulty)?.toLowerCase();
+  const tags = [...new Set((Array.isArray(raw.tags) ? raw.tags : [])
+    .map((t) => cleanText(t)?.toLowerCase())
+    .filter((t): t is string => !!t))].slice(0, 8);
+
+  return {
+    ...raw,
+    title: cleanText(raw.title) ?? "",
+    description: cleanText(raw.description) ?? null,
+    ingredients,
+    steps,
+    prepTime: cleanNumber(raw.prepTime) ?? null,
+    cookTime: cleanNumber(raw.cookTime) ?? null,
+    servings: cleanNumber(raw.servings) ?? null,
+    yield: cleanText(raw.yield) ?? null,
+    difficulty: difficulty === "easy" || difficulty === "medium" || difficulty === "hard" ? difficulty : null,
+    tags,
+    cuisine: cleanText(raw.cuisine) ?? null,
+    warnings: (Array.isArray(raw.warnings) ? raw.warnings : [])
+      .map((w) => cleanText(w))
+      .filter((w): w is string => !!w),
+  };
+}
 
 interface Env extends ProviderEnv {
   WHISK_KV: KVNamespace;
@@ -12,7 +103,7 @@ interface Env extends ProviderEnv {
 interface PhotoRecipeResult {
   title: string;
   description?: string | null;
-  ingredients: Array<{ name: string; amount?: string | null; unit?: string | null; group?: string | null }>;
+  ingredients: Array<{ name: string; amount?: string | null; unit?: string | null; group?: string | null; category?: string | null }>;
   steps: Array<{ text: string; timerMinutes?: number | null; group?: string | null }>;
   prepTime?: number | null;
   cookTime?: number | null;
@@ -78,41 +169,50 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   const uploadStart = Date.now();
   const formData = await request.formData();
-  const photo = formData.get("photo") as File | null;
+  // Several files are allowed: front and back of a card, or a downloaded PDF.
+  const files = formData.getAll("photo").filter((f): f is File => typeof f !== "string").slice(0, MAX_FILES);
 
-  if (!photo) {
-    return new Response(
-      JSON.stringify({ error: "No photo provided" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
-    );
+  if (files.length === 0) {
+    return jsonError("No photo provided", 400);
   }
 
-  if (!photo.type.startsWith("image/")) {
-    return new Response(
-      JSON.stringify({ error: "File must be an image" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
-    );
+  const badFile = files.find((f) => !f.type.startsWith("image/") && f.type !== "application/pdf");
+  if (badFile) {
+    return jsonError("Files must be images or PDFs", 400);
   }
 
-  const arrayBuffer = await photo.arrayBuffer();
-  const photoSizeKB = Math.round(arrayBuffer.byteLength / 1024);
-  const base64 = btoa(
-    Array.from(new Uint8Array(arrayBuffer), (b) => String.fromCharCode(b)).join("")
-  );
-  const mimeType = photo.type || "image/jpeg";
+  const attachments: VisionAttachment[] = [];
+  let totalBytes = 0;
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    totalBytes += bytes.byteLength;
+    if (file.type === "application/pdf" && bytes.byteLength > MAX_PDF_BYTES) {
+      return jsonError("That PDF is too large (max 20 MB)", 413);
+    }
+    if (file.type.startsWith("image/") && bytes.byteLength > MAX_IMAGE_BYTES) {
+      return jsonError("One of the photos is too large (max 3.7 MB after compression)", 413);
+    }
+    attachments.push({ base64: toBase64(bytes), mimeType: file.type || "image/jpeg" });
+  }
+  const photoSizeKB = Math.round(totalBytes / 1024);
+  const hasPdf = attachments.some((a) => a.mimeType === "application/pdf");
   // Household size from the client, used to pick the right column on meal-kit cards (2P/3P/4P).
   const servingsRaw = parseInt(String(formData.get("servings") ?? ""), 10);
   const preferredServings = Number.isFinite(servingsRaw) && servingsRaw > 0 && servingsRaw <= 12 ? servingsRaw : 2;
   const uploadProcessMs = Date.now() - uploadStart;
 
   const prompt = [
-    "You are a recipe extraction assistant for a cooking app. Extract the complete recipe from this photo of a handwritten or printed recipe.",
+    attachments.length > 1
+      ? `You are a recipe extraction assistant for a cooking app. These ${attachments.length} attachments (photos and/or PDF pages) are parts of ONE recipe, for example the front and back of a recipe card. Combine them into a single complete recipe.`
+      : hasPdf
+        ? "You are a recipe extraction assistant for a cooking app. Extract the complete recipe from this PDF (it may be a printed recipe card with a front and back page)."
+        : "You are a recipe extraction assistant for a cooking app. Extract the complete recipe from this photo of a handwritten or printed recipe.",
     "Respond with ONLY a JSON object (no markdown) with this structure:",
     '{',
     '  "title": "Recipe name",',
     '  "description": "Brief description if visible, or null",',
     '  "ingredients": [',
-    '    { "name": "ingredient name (no amounts)", "amount": "numeric amount or fraction", "unit": "measurement unit", "group": "section header if grouped, or null" }',
+    '    { "name": "ingredient name (no amounts)", "amount": "numeric amount or fraction", "unit": "measurement unit", "group": "section header if grouped, or null", "category": "produce" | "dairy" | "meat" | "pantry" | "frozen" | "bakery" | "beverages" | "snacks" | "other" }',
     '  ],',
     '  "steps": [',
     '    { "text": "Full step instruction", "timerMinutes": estimated_minutes_or_null, "group": "section header if grouped, or null" }',
@@ -146,6 +246,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     '- Drop footnote markers such as * or ** from ingredient names. If an ingredient is marked "not included" or "store in the fridge", keep it and add that note to warnings only if it matters for shopping.',
     "- Use the numbered steps or headed sections (e.g. Get Started, Finish Prepping) as steps, in order, with the headings as step groups.",
     "- Ignore the nutrition table, allergen text, recycling notes, packing addresses, QR codes and photo captions.",
+    "- The front of a card usually has the title, a one-line description, the total time and tags such as \"Calorie Smart\" or \"Veggie\". Use them for title, description, cookTime and tags.",
+    "- Write ingredient names the way you'd put them on a shopping list: keep the food and its form (\"diced chicken breast\", \"tagliatelle\", \"black garlic paste\") and drop origin or marketing words (\"British\", \"Fresh\", \"Our\").",
+    "- category is the supermarket aisle for the shopping list: produce (fresh fruit, veg, herbs, salad), meat (meat and fish), dairy (milk, cheese, cream, crème fraîche, eggs, butter), bakery (bread, wraps, baguettes), frozen, pantry (dry goods, tins, pasta, rice, sauces, pastes, stock, spices, oil, condiments), beverages, snacks, other.",
+    "- Before answering, check every quantity against the column you chose and every ingredient against the steps, and fix any mismatch.",
     "- Keep the JSON compact: no commentary before or after it.",
   ].join("\n");
 
@@ -160,7 +264,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   try {
     const visionStart = Date.now();
-    const content = await callVisionAI(fnConfig, env, prompt, base64, mimeType, {
+    const content = await callVisionAIMulti(fnConfig, env, prompt, attachments, {
       // Meal-kit cards produce long ingredient lists and multi-part steps; 2048 could truncate the JSON.
       maxTokens: 6000,
       temperature: 0.2,
@@ -174,7 +278,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start === -1 || end <= start) {
       throw new Error(`AI reply contained no JSON (${content.length} chars)`);
     }
-    const result = parseRecipeJson(content.slice(start, end + 1), content.length);
+    const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length));
 
     console.log(`[Whisk] RecipePhoto config=${configMs}ms upload=${uploadProcessMs}ms vision=${visionMs}ms total=${totalMs}ms photo=${photoSizeKB}KB ingredients=${result.ingredients?.length ?? 0} steps=${result.steps?.length ?? 0}`);
     waitUntil(logScanInteraction(env.WHISK_KV, {

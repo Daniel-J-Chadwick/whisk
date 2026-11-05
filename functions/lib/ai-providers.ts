@@ -673,6 +673,41 @@ async function callAnthropicText(
   return data.content.find((c) => c.type === "text")?.text ?? "";
 }
 
+/** An image or PDF sent to a vision model as base64. */
+export interface VisionAttachment {
+  base64: string;
+  mimeType: string;
+}
+
+/**
+ * Vision call with several attachments (e.g. front and back of a recipe card, or a PDF).
+ * Anthropic gets every attachment, PDFs included. Other providers get the first image only,
+ * since their vision calls here take a single image.
+ */
+export async function callVisionAIMulti(
+  fnConfig: AIFunctionConfig,
+  env: ProviderEnv,
+  prompt: string,
+  attachments: VisionAttachment[],
+  options: CallOptions = {}
+): Promise<string> {
+  const provider = PROVIDERS[fnConfig.provider];
+  if (!provider) throw new Error(`Unknown provider: ${fnConfig.provider}`);
+
+  if (provider.format === "anthropic") {
+    const apiKey = getApiKey(env, fnConfig.provider);
+    if (!apiKey) throw new Error(`No API key for ${provider.name}`);
+    const { maxTokens = 1024 } = options;
+    return callAnthropicVisionMulti(apiKey, fnConfig.model, prompt, attachments, maxTokens);
+  }
+
+  const firstImage = attachments.find((a) => a.mimeType.startsWith("image/"));
+  if (!firstImage) {
+    throw new Error(`${provider.name} can't read PDFs here. Choose Anthropic for vision in Settings > AI, or use photos.`);
+  }
+  return callVisionAI(fnConfig, env, prompt, firstImage.base64, firstImage.mimeType, options);
+}
+
 async function callAnthropicVision(
   apiKey: string,
   model: string,
@@ -680,8 +715,23 @@ async function callAnthropicVision(
   imageBase64: string,
   mimeType: string,
   maxTokens: number,
-  temperature: number
+  _temperature: number
 ): Promise<string> {
+  return callAnthropicVisionMulti(apiKey, model, prompt, [{ base64: imageBase64, mimeType }], maxTokens);
+}
+
+async function callAnthropicVisionMulti(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  attachments: VisionAttachment[],
+  maxTokens: number
+): Promise<string> {
+  const attachmentBlocks = attachments.map((a) =>
+    a.mimeType === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.base64 } }
+      : { type: "image", source: { type: "base64", media_type: a.mimeType, data: a.base64 } }
+  );
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     // Reading a dense recipe card and writing the full JSON can take longer than 30s.
     signal: AbortSignal.timeout(VISION_TIMEOUT_MS),
@@ -698,13 +748,7 @@ async function callAnthropicVision(
       messages: [
         {
           role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mimeType, data: imageBase64 },
-            },
-            { type: "text", text: prompt },
-          ],
+          content: [...attachmentBlocks, { type: "text", text: prompt }],
         },
       ],
     }),

@@ -437,31 +437,46 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
   const handleImportPhoto = () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = "image/*,application/pdf";
+    // Several files allowed: front and back of a recipe card, or a downloaded PDF.
+    input.multiple = true;
     input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      // Show preview immediately
-      const previewUrl = URL.createObjectURL(file);
-      setPhotoPreview(previewUrl);
+      const picked = Array.from(input.files ?? []).slice(0, 4);
+      if (picked.length === 0) return;
+      // Show the first photo as the preview straight away
+      const firstImage = picked.find((f) => f.type.startsWith("image/"));
+      setPhotoPreview(firstImage ? URL.createObjectURL(firstImage) : null);
       setIsPhotoImporting(true);
-      setPhotoImportStep("Processing image...");
+      setPhotoImportStep(picked.length > 1 ? `Processing ${picked.length} files...` : "Processing image...");
       try {
-        // Downscale + compress (same pattern as shopping list scan)
-        const bitmap = await createImageBitmap(file);
-        const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-        const w = Math.round(bitmap.width * scale);
-        const h = Math.round(bitmap.height * scale);
-        const canvas = new OffscreenCanvas(w, h);
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(bitmap, 0, 0, w, h);
-        bitmap.close();
-        const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 });
-        const normalizedFile = new File([blob], "recipe.jpg", { type: "image/jpeg" });
+        // Photos: downscale to 2400px on the long edge so small print on recipe cards stays legible,
+        // then re-encode as JPEG, dropping quality if needed to stay under the AI's per-image limit.
+        // PDFs are sent as they are.
+        const prepared: File[] = [];
+        for (const [index, file] of picked.entries()) {
+          if (file.type === "application/pdf") {
+            prepared.push(file);
+            continue;
+          }
+          const bitmap = await createImageBitmap(file);
+          const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+          const w = Math.round(bitmap.width * scale);
+          const h = Math.round(bitmap.height * scale);
+          const canvas = new OffscreenCanvas(w, h);
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(bitmap, 0, 0, w, h);
+          bitmap.close();
+          let blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.88 });
+          for (const quality of [0.75, 0.6]) {
+            if (blob.size <= 3_500_000) break;
+            blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+          }
+          prepared.push(new File([blob], `recipe-${index + 1}.jpg`, { type: "image/jpeg" }));
+        }
 
-        setPhotoImportStep("Reading recipe from photo...");
+        setPhotoImportStep(picked.length > 1 ? `Reading recipe from ${picked.length} files...` : "Reading recipe from photo...");
         const formData = new FormData();
-        formData.append("photo", normalizedFile);
+        for (const file of prepared) formData.append("photo", file);
         // Lets the server pick the matching column on meal-kit cards (2P/3P/4P).
         formData.append("servings", localStorage.getItem("whisk_household_size") ?? "2");
         const token = localStorage.getItem("whisk_token");
@@ -709,7 +724,7 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
               </div>
               <div>
                 <div className="text-sm font-medium dark:text-stone-100">Scan a Recipe</div>
-                <div className="text-xs text-stone-400 dark:text-stone-500">Photo of handwritten or printed recipe</div>
+                <div className="text-xs text-stone-400 dark:text-stone-500">Photos or a PDF of a recipe card. Pick the front and back together.</div>
               </div>
             </button>
           )}
