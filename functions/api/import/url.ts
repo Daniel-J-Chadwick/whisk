@@ -501,7 +501,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     let servingIngredients: Record<string, { name: string; amount?: string; unit?: string; group?: string; category?: string }[]> | undefined;
     if (isHelloFresh) {
       // Per-size lists from HelloFresh, parsed the same way as the main list
-      const sizeLists = [...(hfData?.yields ?? new Map()).entries()]
+      const sizeLists = [...(hfData?.yields ?? new Map<number, { name: string; amount?: string; unit?: string }[]>()).entries()]
         .filter(([size]) => size !== (baseServings ?? 2))
         .map(([size, list]) => [size, list.map((i) => parseIngredients([[i.amount, i.unit, i.name].filter(Boolean).join(" ")])[0] ?? { name: i.name })] as const);
       const allRaw = [rawParsedIngredients, ...sizeLists.map(([, l]) => l)].flat();
