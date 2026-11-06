@@ -256,7 +256,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     '  "title": "Recipe name",',
     '  "description": "Brief description if visible, or null",',
     '  "ingredients": [',
-    '    { "name": "ingredient name (no amounts)", "amount": "numeric amount or fraction", "unit": "measurement unit", "group": "a section heading shared by several ingredients (e.g. \"For the sauce\", \"Pantry\"), else null. Never the ingredient's own name", "category": "produce" | "dairy" | "meat" | "pantry" | "frozen" | "bakery" | "beverages" | "snacks" | "other" }',
+    '    { "name": "ingredient name (no amounts)", "amount": "numeric amount or fraction", "unit": "measurement unit", "group": "a section heading shared by several ingredients (e.g. \"For the sauce\", \"Pantry\"), else null. never the name of the ingredient itself", "category": "produce" | "dairy" | "meat" | "pantry" | "frozen" | "bakery" | "beverages" | "snacks" | "other" }',
     '  ],',
     '  "steps": [',
     '    { "text": "Full step instruction", "timerMinutes": estimated_minutes_or_null, "group": "section header if grouped, or null" }',
