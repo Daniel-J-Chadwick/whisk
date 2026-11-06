@@ -916,7 +916,7 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
                   </button>
                 </div>
 
-                <StepsList steps={recipe.steps} recipeId={recipe.id} onStartTimer={onStartTimer} completedSteps={completedSteps} onToggleStep={(i) => setCompletedSteps((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; })} />
+                <StepsList steps={recipe.steps} ingredients={ingredients} recipeId={recipe.id} onStartTimer={onStartTimer} completedSteps={completedSteps} onToggleStep={(i) => setCompletedSteps((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; })} />
               </>
             ) : (
               <p className="text-sm text-stone-400 dark:text-stone-500 py-4 text-center">

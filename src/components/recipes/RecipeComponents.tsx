@@ -3,6 +3,7 @@ import { classNames, decodeEntities, parseTimerFromText, parseFraction } from ".
 import { categorizeIngredient, CATEGORY_LABELS, CATEGORY_ORDER, categorizeIngredientForDrink, DRINK_CATEGORY_LABELS, DRINK_CATEGORY_ORDER } from "../../lib/categories";
 import { estimateGrams } from "../../lib/units";
 import { Check, Stopwatch } from "../ui/Icon";
+import { annotateStep } from "../../lib/step-amounts";
 
 // ── Ingredient Row ──
 
@@ -163,13 +164,38 @@ export function GroupedIngredients({ ingredients, sort, resetKey, showGrams, che
 
 // ── Step Row ──
 
-export function StepRow({ step, index, recipeId, onStartTimer, completed, onToggle }: {
+/** Step text with each ingredient's amount shown at its first mention. */
+export function StepText({ text, ingredients }: { text: string; ingredients?: Ingredient[] }) {
+  const decoded = decodeEntities(text);
+  if (!ingredients?.length) return <>{decoded}</>;
+  return (
+    <>
+      {annotateStep(decoded, ingredients).map((seg, i) =>
+        seg.kind === "text" ? (
+          <span key={i}>{seg.text}</span>
+        ) : (
+          <span
+            key={i}
+            title={seg.ingredient}
+            className="ml-1 whitespace-nowrap rounded bg-orange-500/10 px-1 text-[0.92em] font-medium text-orange-700 dark:text-orange-300"
+          >
+            {seg.text}
+          </span>
+        )
+      )}
+    </>
+  );
+}
+
+export function StepRow({ step, index, recipeId, onStartTimer, completed, onToggle, ingredients }: {
   step: Step;
   index: number;
   recipeId?: string;
   onStartTimer?: (label: string, minutes: number, recipeId: string, stepIndex: number) => void;
   completed?: boolean;
   onToggle?: () => void;
+  /** Ingredients (already scaled) to show amounts inline in the step text. */
+  ingredients?: Ingredient[];
 }) {
   const timerMin = step.timerMinutes ?? parseTimerFromText(step.text);
   return (
@@ -194,7 +220,7 @@ export function StepRow({ step, index, recipeId, onStartTimer, completed, onTogg
             ? "text-stone-400 dark:text-stone-500"
             : "dark:text-stone-200"
         )}>
-          {decodeEntities(step.text)}
+          <StepText text={step.text} ingredients={ingredients} />
         </p>
         {step.photoUrl && (
           <img
@@ -219,8 +245,10 @@ export function StepRow({ step, index, recipeId, onStartTimer, completed, onTogg
 
 // ── Steps List ──
 
-export function StepsList({ steps, recipeId, onStartTimer, completedSteps, onToggleStep }: {
+export function StepsList({ steps, recipeId, onStartTimer, completedSteps, onToggleStep, ingredients }: {
   steps: Step[];
+  /** Ingredients (already scaled) to show amounts inline in the steps. */
+  ingredients?: Ingredient[];
   recipeId?: string;
   onStartTimer?: (label: string, minutes: number, recipeId: string, stepIndex: number) => void;
   completedSteps?: Set<number>;
@@ -232,7 +260,7 @@ export function StepsList({ steps, recipeId, onStartTimer, completedSteps, onTog
     return (
       <ol className="space-y-4">
         {steps.map((step, i) => (
-          <StepRow key={i} step={step} index={i} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(i)} onToggle={onToggleStep ? () => onToggleStep(i) : undefined} />
+          <StepRow key={i} step={step} index={i} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(i)} onToggle={onToggleStep ? () => onToggleStep(i) : undefined} ingredients={ingredients} />
         ))}
       </ol>
     );
@@ -261,7 +289,7 @@ export function StepsList({ steps, recipeId, onStartTimer, completedSteps, onTog
           )}
           <ol className="space-y-4">
             {section.steps.map(({ step, originalIndex }) => (
-              <StepRow key={originalIndex} step={step} index={originalIndex} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(originalIndex)} onToggle={onToggleStep ? () => onToggleStep(originalIndex) : undefined} />
+              <StepRow key={originalIndex} step={step} index={originalIndex} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(originalIndex)} onToggle={onToggleStep ? () => onToggleStep(originalIndex) : undefined} ingredients={ingredients} />
             ))}
           </ol>
         </div>

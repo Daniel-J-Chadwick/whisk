@@ -7,6 +7,7 @@ import { useWakeLock } from "../../hooks/useWakeLock";
 import { classNames, parseTimerFromText, decodeEntities } from "../../lib/utils";
 import { LoadingSpinner } from "../ui/LoadingSpinner";
 import { Stopwatch, Check } from "../ui/Icon";
+import { StepText } from "./RecipeComponents";
 
 interface CookModeProps {
   onStartTimer: (label: string, minutes: number, recipeId: string, stepIndex: number) => void;
@@ -165,7 +166,7 @@ export function CookMode({ onStartTimer }: CookModeProps) {
                         : "text-stone-800 dark:text-stone-200"
                     )}
                   >
-                    {decodeEntities(step.text)}
+                    <StepText text={step.text} ingredients={recipe.ingredients} />
                   </p>
 
                   {timerMin && (
