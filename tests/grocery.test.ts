@@ -257,3 +257,25 @@ describe("UK and meal-kit units", () => {
     expect(items[0]!.amount).toBe("3");
   });
 });
+
+describe("HelloFresh ingredient spellings", () => {
+  test("spelled-out metric units become g / ml / kg", () => {
+    expect(label({ name: "12 milliliters Balsamic Glaze" })).toEqual(["12 ml balsamic glaze"]);
+    expect(label({ amount: "50", unit: "gram(s)", name: "Baby Leaf Mix" })).toEqual(["50 g baby leaf mix"]);
+    expect(label({ amount: "1", unit: "kilogram", name: "Potatoes" })).toEqual(["1 kg potato"]);
+  });
+  test("water for the sauce is dropped", () => {
+    expect(label({ name: "500 Milliliter water" })).toEqual([]);
+    expect(label({ amount: "100", unit: "milliliter(s)", name: "Water for the Sauce" })).toEqual([]);
+  });
+  test("'unit' is a plain count and origin words are dropped", () => {
+    expect(label({ amount: "4", unit: "unit", name: "British Pork Loin Steaks" })).toEqual(["4 pork loin steaks"]);
+    expect(label({ amount: "240", unit: "grams", name: "British Chicken Breast" })).toEqual(["240 g chicken breast"]);
+  });
+  test("meal-kit sauces and pastes are pantry", () => {
+    for (const n of ["ketjap manis", "chipotle paste", "sweet chilli sauce", "burger sauce", "balsamic glaze"]) {
+      expect(categorizeIngredient(n)).toBe("pantry");
+    }
+    expect(categorizeIngredient("baby leaf mix")).toBe("produce");
+  });
+});

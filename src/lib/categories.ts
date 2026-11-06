@@ -24,6 +24,7 @@ const CATEGORY_KEYWORDS: Record<ShoppingCategory, string[]> = {
     "watercress", "watermelon", "yam", "zucchini",
     "fresh fruit", "fresh vegetable", "salad", "lettuce mix", "salad mix",
     "coleslaw mix", "stir fry mix", "baby spinach", "spring mix",
+    "baby leaf", "leaf mix", "rocket", "pak choi", "spring onion",
   ],
   dairy: [
     "butter", "buttermilk", "cheese", "cheddar", "colby", "cottage cheese",
@@ -81,6 +82,9 @@ const CATEGORY_KEYWORDS: Record<ShoppingCategory, string[]> = {
     "turmeric", "vanilla", "vegetable oil", "vinegar", "walnut",
     "wasabi", "white rice", "wild rice", "worcestershire", "yeast",
     "chile crisp", "chili crisp", "chili oil", "gochujang", "harissa",
+    // UK / meal-kit sauces and pastes
+    "chipotle", "ketjap", "kecap", "sweet chilli", "chilli sauce", "burger sauce",
+    "glaze", "stock paste", "stock pot", "paste", "chutney",
     "fusilli", "rigatoni", "linguine", "fettuccine", "macaroni", "ziti", "farfalle",
     "tortellini", "ravioli", "lasagna", "molasses",
     "kidney bean", "pinto bean", "navy bean", "cannellini", "white bean",

@@ -331,6 +331,8 @@ function cleanName(raw: string): string {
     .replace(/\s+-\s+.*$/, "") // "chilli flakes - can use more" -> "chilli flakes"
     .replace(/\s+for\s+.*$/, "") // "vegetable oil for bowl"
     .replace(/^of\s+/, "")
+    // Origin and marketing words don't change what you buy ("British chicken breast")
+    .replace(/\b(british|scottish|welsh|irish|our|free[- ]range|outdoor[- ]bred)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return firstAlternative(lower)
@@ -374,9 +376,17 @@ function splitItems(name: string): string[] {
 function convertOne(amount: string | undefined, unit: string | undefined, rawName: string): BuyableItem | null {
   const name = cleanName(rawName);
   if (!name) return null;
-  if (/^(cold |warm |hot |boiling |ice |tap )?water$/.test(name) || name === "ice") return null;
+  // Water in any form ("water", "water for the sauce", "boiling water") isn't shopping
+  if (/^(cold |warm |hot |boiling |ice |tap )?waters?\b/.test(name) || name === "ice") return null;
 
   const qty = parseQuantity(amount);
+  // HelloFresh writes counts as "1 unit red onion": "unit" is just a count.
+  // Metric units get one spelling ("Milliliter" -> "ml", "grams" -> "g").
+  const rawU = unit?.toLowerCase().replace(/\.$/, "").replace(/\(s\)$/, "");
+  if (rawU && /^(units?|pieces?|pcs?)$/.test(rawU)) {
+    return convertOne(amount, undefined, rawName);
+  }
+  if (rawU && isMetric(rawU)) unit = canonicalUnit(rawU);
   const u = unit?.toLowerCase().replace(/\.$/, "");
   const entry = findEntry(name);
 
