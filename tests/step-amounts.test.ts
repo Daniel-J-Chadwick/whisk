@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { annotateStep, type StepIngredient } from "../src/lib/step-amounts";
+import { annotateStep, annotateSteps, type StepIngredient } from "../src/lib/step-amounts";
 import { scaleIngredient } from "../src/lib/utils";
 
 /** Render segments as text with amounts in [brackets], for easy assertions. */
@@ -108,5 +108,29 @@ describe("fractions across steps", () => {
     expect(scaleAmountText("3 tsp mix", 2 / 3)).toBe("2 tsp mix");
     expect(scaleAmountText("1 1/2 tsp", 0.5)).toBe("3/4 tsp");
     expect(scaleAmountText("270 g", 0.5)).toBe("135 g");
+  });
+});
+
+describe("filo pie fixes", () => {
+  const pie: StepIngredient[] = [
+    { name: "Carrot", amount: "3" },
+    { name: "Diced British Chicken Breast", amount: "240", unit: "g" },
+    { name: "Filo Pastry Sheets", amount: "3 1/2" },
+    { name: "Honey", amount: "1 1/2", unit: "tbsp" },
+  ];
+  const run = (steps: string[]) =>
+    annotateSteps(steps, pie).map((segs) => segs.map((s) => (s.kind === "amount" ? (s.quiet ? "" : ` [${s.text}]`) : s.text)).join(""));
+  test("prep words don't count as the ingredient name", () => {
+    expect(run(["Fry the diced chicken until golden."])).toEqual(["Fry the diced chicken [240 g] until golden."]);
+  });
+  test("each full amount shows once per recipe; shares always show", () => {
+    expect(run(["Trim the carrots.", "Roast the carrots with half the honey.", "Toss the carrots in the remaining honey."])).toEqual([
+      "Trim the carrots [3].",
+      "Roast the carrots with half the honey [3/4 tbsp].",
+      "Toss the carrots in the remaining honey [3/4 tbsp].",
+    ]);
+  });
+  test("'see ingredients for amount' is handled like the pantry note", () => {
+    expect(run(["Cut the filo pastry sheets (see ingredients for amount) in half."])).toEqual(["Cut the filo pastry sheets [3 1/2] in half."]);
   });
 });

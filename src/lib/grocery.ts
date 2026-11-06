@@ -9,6 +9,7 @@ export interface IngredientInput {
   name: string;
   amount?: string;
   unit?: string;
+  group?: string;
 }
 
 export interface BuyableItem {
@@ -447,6 +448,8 @@ function reparse(ing: IngredientInput): { name: string; amount?: string; unit?: 
 
 /** isPantryStaple for a stored ingredient, re-parsed so older data matches too. */
 export function isStapleIngredient(ing: IngredientInput): boolean {
+  // Meal-kit "Pantry" items (not in the delivery) count as staples, so Add Essentials skips them
+  if (ing.group?.trim().toLowerCase() === "pantry") return true;
   return isPantryStaple(reparse(ing).name);
 }
 

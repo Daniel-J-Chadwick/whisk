@@ -27,6 +27,18 @@ export function formatTimerDisplay(seconds: number): string {
 
 // ── Ingredient Scaling ──────────────────────────────────
 
+/**
+ * A recipe's ingredients for a number of servings. Uses the source's exact list for that size
+ * when there is one (HelloFresh publishes 2, 3 and 4 person amounts, which don't scale evenly);
+ * otherwise scales the main list.
+ */
+export function ingredientsForServings(recipe: Pick<Recipe, "ingredients" | "servings" | "servingIngredients">, servings: number): Ingredient[] {
+  const exact = recipe.servingIngredients?.[String(servings)];
+  if (exact?.length) return exact;
+  const base = recipe.servings ?? 1;
+  return recipe.ingredients.map((ing) => scaleIngredient(ing, base, servings));
+}
+
 export function scaleIngredient(
   ingredient: Ingredient,
   originalServings: number,

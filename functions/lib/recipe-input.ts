@@ -117,6 +117,32 @@ export interface NormalizedRecipe {
   sourceRatingCount?: number;
   favorite: boolean;
   wantToMake?: boolean;
+  servingIngredients?: Record<string, NormalizedIngredient[]>;
+  nutrition?: Record<string, number>;
+}
+
+const NUTRITION_KEYS = ["calories", "protein", "carbs", "sugar", "fat", "saturatedFat", "fibre", "salt"];
+
+function normalizeNutrition(v: unknown): Record<string, number> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const out: Record<string, number> = {};
+  for (const k of NUTRITION_KEYS) {
+    const n = clampFiniteNumber(o[k], 0, 10_000);
+    if (n !== undefined) out[k] = n;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeServingIngredients(v: unknown): Record<string, NormalizedIngredient[]> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const out: Record<string, NormalizedIngredient[]> = {};
+  for (const [key, list] of Object.entries(v as Record<string, unknown>).slice(0, 8)) {
+    if (!/^\d{1,2}$/.test(key) || !Array.isArray(list)) continue;
+    const ings = (list as unknown[]).slice(0, MAX_INGREDIENTS).map(normalizeIngredient).filter((i): i is NormalizedIngredient => i !== null);
+    if (ings.length) out[key] = ings;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 function normalizeIngredient(v: unknown): NormalizedIngredient | null {
@@ -219,5 +245,7 @@ export function normalizeRecipeInput(raw: unknown): NormalizedRecipe | null {
     sourceRatingCount: clampFiniteNumber(o.sourceRatingCount, 0, 10_000_000),
     favorite: Boolean(o.favorite),
     wantToMake: typeof o.wantToMake === "boolean" ? o.wantToMake : undefined,
+    servingIngredients: normalizeServingIngredients(o.servingIngredients),
+    nutrition: normalizeNutrition(o.nutrition),
   };
 }

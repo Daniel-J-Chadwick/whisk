@@ -8,6 +8,7 @@ import { useTags } from "../../hooks/useTags";
 import {
   formatTime,
   scaleIngredient,
+  ingredientsForServings,
   classNames,
   parseTimerFromText,
   decodeEntities,
@@ -167,9 +168,7 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
 
   const handleAddSelected = useCallback(async () => {
     if (!recipe || checkedIndices.size === 0) return;
-    const scaled = recipe.ingredients.map((ing) =>
-      scaleIngredient(ing, recipe.servings ?? 1, scaledServings ?? recipe.servings ?? 1)
-    );
+    const scaled = ingredientsForServings(recipe, scaledServings ?? recipe.servings ?? 1);
     const selected = scaled.filter((_, i) => checkedIndices.has(i));
     const result = await onAddToShoppingList(selected, recipe.id);
     if (result.added > 0) {
@@ -417,9 +416,8 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
 
   const originalServings = recipe.servings ?? 1;
   const servings = scaledServings ?? originalServings;
-  const ingredients = recipe.ingredients.map((ing) =>
-    scaleIngredient(ing, originalServings, servings)
-  );
+  // HelloFresh's exact amounts for 3 or 4 people when available, otherwise scaled
+  const ingredients = ingredientsForServings(recipe, servings);
 
   return (
     <div className="min-h-screen pb-24 lg:max-w-5xl lg:mx-auto">
@@ -865,6 +863,37 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
               <p className="text-sm text-stone-400 dark:text-stone-500 py-4 text-center">
                 No ingredients listed
               </p>
+            )}
+
+            {/* Nutrition per serving, as published by the source */}
+            {recipe.nutrition && Object.keys(recipe.nutrition).length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-xs font-medium text-stone-500 dark:text-stone-400 mb-1.5">Nutrition per serving</h3>
+                <dl className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                  {([
+                    ["calories", "Energy", "kcal"],
+                    ["protein", "Protein", "g"],
+                    ["carbs", "Carbs", "g"],
+                    ["sugar", "Sugar", "g"],
+                    ["fat", "Fat", "g"],
+                    ["saturatedFat", "Saturates", "g"],
+                    ["fibre", "Fibre", "g"],
+                    ["salt", "Salt", "g"],
+                  ] as const).map(([key, label, unit]) => {
+                    const value = recipe.nutrition?.[key];
+                    if (value === undefined) return null;
+                    return (
+                      <div key={key} className="rounded-lg bg-stone-50 px-2 py-1.5 text-center dark:bg-stone-900">
+                        <dt className="text-[11px] text-stone-500 dark:text-stone-400">{label}</dt>
+                        <dd className="text-sm font-semibold text-stone-800 dark:text-stone-100">
+                          {Math.round(value * 10) / 10}
+                          <span className="ml-0.5 text-[11px] font-normal text-stone-500 dark:text-stone-400">{unit}</span>
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </div>
             )}
 
           </section>

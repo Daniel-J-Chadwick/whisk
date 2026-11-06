@@ -28,6 +28,10 @@ export interface Recipe {
   prepTime?: number;
   cookTime?: number;
   servings?: number;
+  /** Exact ingredient lists for other serving sizes, keyed "3", "4" (from HelloFresh). The scaler uses these when they exist. */
+  servingIngredients?: Record<string, Ingredient[]>;
+  /** Per-serving nutrition from the source. */
+  nutrition?: NutritionInfo;
   yield?: string;
   difficulty?: "easy" | "medium" | "hard";
   notes?: string;
@@ -62,6 +66,18 @@ export interface RecipePhoto {
   url: string;
   caption?: string;
   isPrimary: boolean;
+}
+
+/** Nutrition for one serving, as published by the source. */
+export interface NutritionInfo {
+  calories?: number; // kcal
+  protein?: number; // g
+  carbs?: number; // g
+  sugar?: number; // g
+  fat?: number; // g
+  saturatedFat?: number; // g
+  fibre?: number; // g
+  salt?: number; // g
 }
 
 export interface Ingredient {

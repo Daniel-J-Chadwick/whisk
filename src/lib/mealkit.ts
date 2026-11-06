@@ -179,7 +179,7 @@ const BLENDS: Blend[] = [
 
 /** Spices sold on their own: a sachet is roughly a teaspoon. */
 const SINGLE_SPICES =
-  /^(?:ground |dried |smoked |hot |sweet |mild |whole )*(?:paprika|cumin|coriander|turmeric|cinnamon|nutmeg|ginger|allspice|cardamom|fennel seeds?|cumin seeds?|mustard seeds?|chilli flakes|chili flakes|red pepper flakes|chilli powder|chili powder|cayenne(?: pepper)?|garam masala|curry powder|chinese five spice|five spice|mixed herbs|mixed spice|oregano|thyme|basil|rosemary|sage|dill|mint|tarragon|parsley|bay leaf|bay leaves|sumac|za'?atar|dukkah|nigella seeds|sesame seeds|garlic powder|onion powder|black pepper|white pepper|star anise)$/;
+  /^(?:ground |dried |smoked |hot |sweet |mild |whole |white |black |brown |yellow |red )*(?:paprika|cumin|coriander|turmeric|cinnamon|nutmeg|ginger|allspice|cardamom|fennel seeds?|cumin seeds?|mustard seeds?|chilli flakes|chili flakes|red pepper flakes|chilli powder|chili powder|cayenne(?: pepper)?|garam masala|curry powder|chinese five spice|five spice|mixed herbs|mixed spice|oregano|thyme|basil|rosemary|sage|dill|mint|tarragon|parsley|bay leaf|bay leaves|sumac|za'?atar|dukkah|nigella seeds|sesame seeds|garlic powder|onion powder|black pepper|white pepper|star anise)$/;
 
 const LIQUID = /\b(oil|vinegar|glaze|milk|soy sauce|tamari|fish sauce|mirin|wine|juice|water|stock|broth|cream|passata|coconut milk|syrup)\b/;
 const COUNTED = /\b(eggs?|tortillas?|wraps?|buns?|rolls?|naans?|pittas?|flatbreads?|crumpets?|muffins?|bagels?)\b/;
@@ -261,6 +261,20 @@ export interface MealKitOptions {
    * table, which is only a fallback for when the AI isn't available.
    */
   blends?: Record<string, BlendRecipe>;
+  /** Names (lower case) the source marks as not included in the delivery. */
+  notShipped?: Set<string>;
+  /** Put everyday cupboard items (water, salt, oil, eggs...) in a "Pantry" group. */
+  markPantry?: boolean;
+}
+
+/** Things meal kits expect you to have in: water, salt, pepper, oil, butter, sugar, eggs, milk, flour, honey. */
+const PANTRY_NAME =
+  /^(?:(?:cold|warm|boiling|tap)\s+)?(?:water|salt|sea salt|fine salt|(?:black |ground black )?pepper|(?:olive |vegetable |sunflower |rapeseed |cooking )?oil|butter|unsalted butter|(?:caster |granulated |brown |light brown )?sugar|eggs?|(?:whole |semi[- ]skimmed )?milk|(?:plain )?flour|honey)\b/i;
+
+/** True for an ingredient that belongs in the Pantry group. */
+function isPantryItem(name: string, options: MealKitOptions): boolean {
+  const lower = name.toLowerCase().trim();
+  return !!options.notShipped?.has(lower) || (!!options.markPantry && PANTRY_NAME.test(lower));
 }
 
 /** Lookup key for a blend name: lower case, no "sachet", single spaces, no footnote marks. */
@@ -362,6 +376,8 @@ export function normalizeMealKitIngredients(
 
   for (const original of dropMeaninglessGroups(ingredients)) {
     const ing: MealKitIngredient = { ...original, name: cleanName(original.name) };
+    // Not included in the delivery: group as Pantry (blend parts keep their own group)
+    if (!BLEND_GROUP.test(ing.group ?? "") && isPantryItem(ing.name, options)) ing.group = "Pantry";
     const unitLower = (ing.unit ?? "").toLowerCase().replace(/\(s\)$/, "").trim();
     const nameLower = ing.name.toLowerCase();
 
@@ -422,4 +438,19 @@ export function isHelloFreshUrl(url: string | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+/** Names worth asking about: not pantry, not spice blend parts, not already swapped. */
+export function swapCandidates(ingredients: MealKitIngredient[]): string[] {
+  return ingredients
+    .filter((i) => i.group !== "Pantry" && !BLEND_GROUP.test(i.group ?? "") && !/\(.+\)\s*$/.test(i.name) && i.unit !== "tsp")
+    .map((i) => i.name);
+}
+
+/** "Hard Italian Style Cheese" + swap "Grana Padano" -> "Grana Padano (Hard Italian Style Cheese)". */
+export function applyProductSwaps<T extends MealKitIngredient>(ingredients: T[], swaps: Record<string, string>): T[] {
+  return ingredients.map((i) => {
+    const swap = swaps[blendKey(i.name)];
+    return swap && !/\(.+\)\s*$/.test(i.name) ? { ...i, name: `${swap} (${i.name})` } : i;
+  });
 }

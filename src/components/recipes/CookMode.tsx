@@ -4,7 +4,7 @@ import type { Recipe } from "../../types";
 import { useRecipes } from "../../hooks/useRecipes";
 import { getLocal, CACHE_KEYS } from "../../lib/cache";
 import { useWakeLock } from "../../hooks/useWakeLock";
-import { classNames, decodeEntities, parseTimerFromText, scaleIngredient } from "../../lib/utils";
+import { classNames, decodeEntities, ingredientsForServings, parseTimerFromText } from "../../lib/utils";
 import { annotateSteps, segmentIngredients } from "../../lib/step-amounts";
 import { LoadingSpinner } from "../ui/LoadingSpinner";
 import { Stopwatch, Check } from "../ui/Icon";
@@ -32,7 +32,7 @@ export function CookMode({ onStartTimer }: CookModeProps) {
     if (!recipe) return [];
     const base = recipe.servings ?? 1;
     const target = Number.isFinite(requestedServings) && requestedServings > 0 ? requestedServings : base;
-    return recipe.ingredients.map((ing) => scaleIngredient(ing, base, target));
+    return ingredientsForServings(recipe, target);
   }, [recipe, requestedServings]);
   // Whole recipe at once, so "the remaining ..." knows what earlier steps used
   const annotated = useMemo(

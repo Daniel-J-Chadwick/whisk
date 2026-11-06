@@ -143,3 +143,18 @@ describe("groups and singular units", () => {
     expect(normalizeMealKitIngredients([{ name: "Tomato Passata", amount: "2", unit: "cartons" }])[0]!.unit).toBe("cartons");
   });
 });
+
+describe("pantry and spice prefixes", () => {
+  test("white cumin seeds sachet becomes teaspoons", () => {
+    expect(normalizeMealKitIngredients([{ name: "White Cumin Seeds", amount: "1", unit: "sachet" }])[0]).toMatchObject({ unit: "tsp", amount: "1" });
+  });
+  test("cupboard items go in Pantry when asked, or when the source says not shipped", () => {
+    const out = normalizeMealKitIngredients(
+      [{ name: "Water for the Sauce", amount: "150", unit: "ml" }, { name: "Egg", amount: "1" }, { name: "Honey", amount: "1", unit: "tbsp" }, { name: "Carrot", amount: "3" }],
+      { markPantry: true }
+    );
+    expect(out.map((i) => i.group ?? null)).toEqual(["Pantry", "Pantry", "Pantry", null]);
+    const shipped = normalizeMealKitIngredients([{ name: "Breadcrumbs", amount: "50", unit: "g" }], { notShipped: new Set(["breadcrumbs"]) });
+    expect(shipped[0]!.group).toBe("Pantry");
+  });
+});

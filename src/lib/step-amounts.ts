@@ -24,7 +24,10 @@ export interface StepIngredient {
 
 export type StepSegment =
   | { kind: "text"; text: string }
-  /** quiet: a bare count of 1 ("the onion"), listed in checklists but not shown inline. */
+  /**
+   * quiet: a bare count of 1 ("the onion"), or a repeat of an amount an earlier step already
+   * showed. Listed in cook mode's per-step checklist but not shown inline.
+   */
   | { kind: "amount"; text: string; ingredient: string; quiet?: boolean };
 
 interface Entry {
@@ -41,6 +44,8 @@ const NOISE = new Set([
   "a", "an", "and", "the", "of", "for", "with", "in", "or", "to", "your",
   "british", "fresh", "mature", "style", "italian", "free", "range", "outdoor", "bred", "our", "large", "small", "medium",
   "unit", "units", "sachet", "sachets", "pack", "pot",
+  // Prep words describe the ingredient, they don't name it ("Diced Chicken Breast")
+  "diced", "sliced", "chopped", "grated", "minced", "shredded", "crushed", "peeled", "trimmed", "cubed", "halved",
 ]);
 // Single words too vague to match on their own (they'd catch "salt and pepper", "drizzle of oil")
 const AMBIGUOUS = new Set([
@@ -102,7 +107,12 @@ function buildEntries(ingredients: StepIngredient[]): Entry[] {
     }
     const amount = amountText(ing);
     if (!amount) continue;
-    const { phrases, full } = phrasesFor(ing.name);
+    // "Grana Padano (Hard Italian Style Cheese)": steps use the original kit name, so match both
+    const swapped = /^(.+?)\s*\((.+)\)\s*$/.exec(ing.name);
+    const main = phrasesFor(swapped ? swapped[1]! : ing.name);
+    const alt = swapped ? phrasesFor(swapped[2]!).phrases : [];
+    const phrases = [...new Set([...main.phrases, ...alt])].sort((a, b) => b.length - a.length);
+    const full = main.full;
     const quiet = !ing.unit?.trim() && parseTsp(ing.amount) <= 1;
     entries.push({ label: ing.name, amount, quiet, phrases, fullPhrase: full });
   }
@@ -130,7 +140,7 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
 }
 
-const PANTRY_NOTE = /\s*\(see pantry for amount\)/gi;
+const PANTRY_NOTE = /\s*\(see (?:pantry|ingredients) for amount\)/gi;
 const AMOUNT_BEFORE = /(\d[\d\s./½¼¾⅓⅔-]*\s*(?:[a-z]+\s+)?(?:of\s+)?)$/i;
 
 interface Match {
@@ -159,6 +169,8 @@ export function stepIngredients(text: string, ingredients: StepIngredient[]): { 
 /** How much of each ingredient earlier steps used, for "the remaining ...". */
 export interface StepState {
   used: Map<string, number>;
+  /** Ingredients whose amount an earlier step already showed in full. */
+  shown?: Set<string>;
 }
 
 /**
@@ -166,7 +178,7 @@ export interface StepState {
  * "the remaining seasoning" in a later one show 2/3 and 1/3 of the amount.
  */
 export function annotateSteps(texts: string[], ingredients: StepIngredient[]): StepSegment[][] {
-  const state: StepState = { used: new Map() };
+  const state: StepState = { used: new Map(), shown: new Set() };
   return texts.map((t) => annotateStep(t, ingredients, state));
 }
 
@@ -284,11 +296,17 @@ export function annotateStep(text: string, ingredients: StepIngredient[], state?
   for (const m of chosen) {
     if (m.note) {
       pushText(text.slice(pos, m.note.start));
+      state?.shown?.add(m.entry.label);
       segments.push({ kind: "amount", text: m.entry.amount, ingredient: m.entry.label, quiet: m.entry.quiet });
       pos = m.note.end;
     } else {
       pushText(text.slice(pos, m.end));
-      segments.push({ kind: "amount", text: amountFor(m), ingredient: m.entry.label, quiet: m.entry.quiet });
+      const amount = amountFor(m);
+      const isShare = amount !== m.entry.amount;
+      // Show each full amount once per recipe; shares ("half the") always show
+      const repeat = !isShare && !!state?.shown?.has(m.entry.label);
+      if (!isShare) state?.shown?.add(m.entry.label);
+      segments.push({ kind: "amount", text: amount, ingredient: m.entry.label, quiet: m.entry.quiet || repeat });
       pos = m.end;
     }
   }

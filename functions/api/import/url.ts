@@ -15,7 +15,9 @@ import {
 import { validateClientJsonLd } from "../../lib/recipe-jsonld";
 import { wrapUntrusted } from "../../lib/untrusted";
 import { parseIngredientLines } from "../../../src/lib/ingredient-parse";
-import { findBlendSachets, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
+import { applyProductSwaps, findBlendSachets, normalizeMealKitIngredients, swapCandidates, type MealKitOptions } from "../../../src/lib/mealkit";
+import { extractHelloFreshData, parseJsonLdNutrition } from "../../lib/hellofresh";
+import { resolveProductSwaps } from "../../lib/product-swaps";
 import { resolveSpiceBlends } from "../../lib/spice-blends";
 
 interface Env extends ProviderEnv {
@@ -27,6 +29,7 @@ interface Env extends ProviderEnv {
 }
 
 interface RecipeData {
+  nutrition?: unknown;
   name?: string;
   description?: string;
   image?: unknown;
@@ -488,15 +491,52 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     // HelloFresh: bare amounts are grams, "unit" is a count, and spice sachets become everyday spices.
     const rawParsedIngredients = parseIngredients(recipeData.recipeIngredient ?? []);
-    const parsedIngredients = isHelloFresh
-      ? normalizeMealKitIngredients(rawParsedIngredients, {
-          bareAmountsAreMetric: true,
-          // The AI works out what's in each spice sachet (cached per blend name)
-          blends: await resolveSpiceBlends(env, findBlendSachets(rawParsedIngredients), { title: recipeData.name }).catch(() => ({})),
-        })
-      : rawParsedIngredients;
+    const baseServings = parseServings(recipeData.recipeYield);
+
+    // HelloFresh's own recipe record (per-size amounts, what's not shipped, nutrition, cuisines)
+    const hfId = isHelloFresh ? helloFreshRecipeId(url) : null;
+    const hfData = hfId && html ? extractHelloFreshData(html, hfId) : null;
+
+    let parsedIngredients: { name: string; amount?: string; unit?: string; group?: string; category?: string }[] = rawParsedIngredients;
+    let servingIngredients: Record<string, { name: string; amount?: string; unit?: string; group?: string; category?: string }[]> | undefined;
+    if (isHelloFresh) {
+      // Per-size lists from HelloFresh, parsed the same way as the main list
+      const sizeLists = [...(hfData?.yields ?? new Map()).entries()]
+        .filter(([size]) => size !== (baseServings ?? 2))
+        .map(([size, list]) => [size, list.map((i) => parseIngredients([[i.amount, i.unit, i.name].filter(Boolean).join(" ")])[0] ?? { name: i.name })] as const);
+      const allRaw = [rawParsedIngredients, ...sizeLists.map(([, l]) => l)].flat();
+      const options: MealKitOptions = {
+        bareAmountsAreMetric: true,
+        markPantry: true,
+        notShipped: hfData?.notShipped,
+        // The AI works out what's in each spice sachet (cached per blend name)
+        blends: await resolveSpiceBlends(env, findBlendSachets(allRaw), { title: recipeData.name }).catch(() => ({})),
+      };
+      const base = normalizeMealKitIngredients(rawParsedIngredients, options);
+      // Kit-only products get their supermarket name (cached per product name)
+      const swaps = await resolveProductSwaps(env, swapCandidates(base), { title: recipeData.name }).catch(() => ({}));
+      parsedIngredients = applyProductSwaps(base, swaps);
+      if (sizeLists.length) {
+        servingIngredients = Object.fromEntries(
+          sizeLists.map(([size, list]) => [String(size), applyProductSwaps(normalizeMealKitIngredients(list, options), swaps)])
+        );
+      }
+    }
+    const nutrition = hfData?.nutrition ?? parseJsonLdNutrition(recipeData.nutrition);
+
     // HelloFresh publishes its own cuisine; guessing from the title gives "indian" for katsu curry
     const tags = generateTags(recipeData, parsedIngredients, { sourceCuisineOnly: isHelloFresh });
+    for (const c of hfData?.cuisines ?? []) {
+      const lc = c.toLowerCase().trim();
+      if (CUISINE_TAGS.has(lc)) tags.push(lc);
+    }
+
+    // Already in the book? (same HelloFresh recipe id) - the form offers to update it instead
+    let existingRecipeId: string | undefined;
+    if (hfId) {
+      const index = (await env.WHISK_KV.get("recipes:index", "json").catch(() => null)) as { id: string; sourceUrl?: string }[] | null;
+      existingRecipeId = index?.find((r) => r.sourceUrl?.toLowerCase().includes(hfId))?.id;
+    }
     const rating = parseAggregateRating(recipeData.aggregateRating);
     const rawInstructions = recipeData.recipeInstructions ?? [];
     const { steps: parsedSteps, notes } = parseInstructions(rawInstructions);
@@ -537,11 +577,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         parseDuration(recipeData.prepTime) ??
         parseDuration(recipeData.totalTime),
       cookTime: parseDuration(recipeData.cookTime),
-      servings: parseServings(recipeData.recipeYield),
+      servings: baseServings,
+      ...(servingIngredients ? { servingIngredients } : {}),
+      ...(nutrition ? { nutrition } : {}),
+      ...(existingRecipeId ? { existingRecipeId } : {}),
       thumbnailUrl,
       photos,
       videoUrl,
-      tags,
+      tags: [...new Set(tags)],
       sourceRating: rating.value,
       sourceRatingCount: rating.count,
       lastCrawledAt: new Date().toISOString(),
@@ -603,7 +646,7 @@ function backfillRecipeData(primary: RecipeData, secondary: RecipeData): void {
 function generateTags(
   data: RecipeData,
   ingredients: { name: string }[],
-  /** Only take cuisine from the source's own data (HelloFresh), never guess it from the title. */
+  /** Only take cuisine and meal type from the source's own data (HelloFresh), never guess them from the title. */
   options: { sourceCuisineOnly?: boolean } = {}
 ): string[] {
   const tags = new Set<string>();
@@ -646,15 +689,18 @@ function generateTags(
   // Meal type from title/description
   const MEAL_PATTERNS: [string, RegExp][] = [
     ["breakfast", /\b(?:breakfast|brunch|pancake|waffle|omelette?|frittata|granola|oatmeal)\b/],
-    ["dessert", /\b(?:dessert|cake|cookies?|brownies?|pie|tart|ice cream|pudding|mousse|cheesecake|fudge|candy|souffl[eé])\b/],
+    // Only sweet pies and tarts: British pies and tarts are as often savoury (chicken pie, onion tart)
+    ["dessert", /\b(?:dessert|cake|cookies?|brownies?|(?:apple|cherry|pecan|pumpkin|blueberry|lemon|key lime|banoffee|custard|treacle|bakewell|jam) (?:pie|tart)|ice cream|mousse|cheesecake|fudge|candy|souffl[eé])\b/],
     ["starter", /\b(?:appetizer|starter|dip|hummus|bruschetta|crostini|spring rolls?|dumplings?|sliders?)\b/],
     ["salad", /\b(?:salad|slaw|coleslaw)\b/],
     ["side dish", /\b(?:side dish|mashed potatoes?|roasted (?:vegetables|potatoes)|rice pilaf|couscous)\b/],
     ["drinks", /\b(?:cocktail|smoothie|lemonade|margarita|sangria|spritz|mojito)\b/],
     ["snack", /\b(?:snack|popcorn|trail mix|energy balls?)\b/],
   ];
-  for (const [tag, pattern] of MEAL_PATTERNS) {
-    if (pattern.test(text)) tags.add(tag);
+  if (!options.sourceCuisineOnly) {
+    for (const [tag, pattern] of MEAL_PATTERNS) {
+      if (pattern.test(text)) tags.add(tag);
+    }
   }
 
   // Cuisine from title

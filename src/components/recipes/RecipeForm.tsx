@@ -77,6 +77,14 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
   });
   const [newTag, setNewTag] = useState("");
   const [photos, setPhotos] = useState<RecipePhoto[]>(cachedRecipe?.photos ?? []);
+  // Imported data the form doesn't edit directly, kept for saving
+  const [importExtras, setImportExtras] = useState<Pick<Recipe, "servingIngredients" | "nutrition">>(() => ({
+    servingIngredients: cachedRecipe?.servingIngredients,
+    nutrition: cachedRecipe?.nutrition,
+  }));
+  // The imported recipe is already in the book (same HelloFresh recipe)
+  const [existingRecipeId, setExistingRecipeId] = useState<string | null>(null);
+  const [updatingExisting, setUpdatingExisting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isAutoTagging, setIsAutoTagging] = useState(false);
   const [isPhotoImporting, setIsPhotoImporting] = useState(false);
@@ -312,6 +320,8 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
               : { type: "manual" as const, attribution: sourceText.trim() }
             : { type: "manual" as const },
         ...(importUrl ? { lastCrawledAt: new Date().toISOString() } : {}),
+        ...(importExtras.servingIngredients ? { servingIngredients: importExtras.servingIngredients } : {}),
+        ...(importExtras.nutrition ? { nutrition: importExtras.nutrition } : {}),
       };
 
       if (isEditing && id) {
@@ -627,6 +637,11 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
       if (Array.isArray(data.photos) && data.photos.length) {
         setPhotos(data.photos as RecipePhoto[]);
       }
+      setImportExtras({
+        servingIngredients: (data.servingIngredients as Recipe["servingIngredients"]) ?? undefined,
+        nutrition: (data.nutrition as Recipe["nutrition"]) ?? undefined,
+      });
+      setExistingRecipeId(!isEditing && typeof data.existingRecipeId === "string" ? data.existingRecipeId : null);
       // Apply server-side tags from JSON-LD extraction
       if (Array.isArray(data.tags) && data.tags.length) {
         setTags((prev) => [...new Set([...prev, ...(data.tags as string[])])]);
@@ -786,6 +801,51 @@ export function RecipeForm({ allTags, onAddTag, chatEnabled }: RecipeFormProps) 
       {/* ── Manual Form ── */}
       {showManualForm && (
       <form onSubmit={handleSubmit} className="px-4 py-4 space-y-6">
+        {/* Already in the book: update that recipe rather than saving a second copy */}
+        {existingRecipeId && (
+          <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40">
+            <p className="text-stone-700 dark:text-stone-200">You already have this recipe in your book.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={updatingExisting}
+                onClick={async () => {
+                  setUpdatingExisting(true);
+                  try {
+                    await updateRecipe(existingRecipeId, {
+                      title: title.trim(),
+                      description: description.trim() || undefined,
+                      ingredients: ingredients.filter((ing) => ing.name.trim()),
+                      steps: steps.filter((s) => s.text.trim()),
+                      ...(photos.length ? { photos, thumbnailUrl: photos.find((p) => p.isPrimary)?.url ?? photos[0]?.url } : {}),
+                      prepTime: prepTime ? parseInt(prepTime) : undefined,
+                      cookTime: cookTime ? parseInt(cookTime) : undefined,
+                      servings: servings ? parseInt(servings) : undefined,
+                      ...(importExtras.servingIngredients ? { servingIngredients: importExtras.servingIngredients } : {}),
+                      ...(importExtras.nutrition ? { nutrition: importExtras.nutrition } : {}),
+                      lastCrawledAt: new Date().toISOString(),
+                    });
+                    navigate(`/recipes/${existingRecipeId}`, { replace: true });
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : "Couldn't update the recipe");
+                  } finally {
+                    setUpdatingExisting(false);
+                  }
+                }}
+                className="rounded-full bg-orange-500 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {updatingExisting ? "Updating..." : "Update my copy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/recipes/${existingRecipeId}`)}
+                className="rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 dark:border-stone-600 dark:text-stone-300"
+              >
+                Open my copy
+              </button>
+            </div>
+          </div>
+        )}
         {/* Photo preview (collapsible reference image) */}
         {photoPreview && (
           photoCollapsed ? (

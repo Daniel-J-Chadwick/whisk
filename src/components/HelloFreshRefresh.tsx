@@ -3,8 +3,10 @@ import type { Ingredient, Recipe, RecipeIndexEntry, RecipePhoto, Step } from "..
 import { api } from "../lib/api";
 import { CACHE_KEYS, setLocal } from "../lib/cache";
 import {
+  applyProductSwaps,
   collapseEstimatedBlends,
   findBlendSachets,
+  swapCandidates,
   isHelloFreshUrl,
   looksLikeMealKit,
   normalizeMealKitIngredients,
@@ -27,6 +29,8 @@ interface ImportedRecipe {
   cookTime?: number;
   servings?: number;
   tags?: string[];
+  servingIngredients?: Recipe["servingIngredients"];
+  nutrition?: Recipe["nutrition"];
 }
 
 /** Earlier split of a spice sachet into estimated spices. */
@@ -64,6 +68,8 @@ export function HelloFreshRefresh() {
     let refetched = 0;
     let cleaned = 0;
     let unchanged = 0;
+    let withSizes = 0;
+    let withNutrition = 0;
     const failed: string[] = [];
     try {
       setProgress("Finding HelloFresh recipes...");
@@ -100,6 +106,8 @@ export function HelloFreshRefresh() {
                 ...(data.prepTime ? { prepTime: data.prepTime } : {}),
                 ...(data.cookTime ? { cookTime: data.cookTime } : {}),
                 ...(data.servings ? { servings: data.servings } : {}),
+                ...(data.servingIngredients ? { servingIngredients: data.servingIngredients } : {}),
+                ...(data.nutrition ? { nutrition: data.nutrition } : {}),
                 // Keep your own tags; replace cuisine tags with HelloFresh's
                 tags: [...new Set([
                   ...recipe.tags.filter((t) => !CUISINE_TAG_NAMES.has(t)),
@@ -107,6 +115,8 @@ export function HelloFreshRefresh() {
                 ])],
               };
               refetched++;
+              if (data.servingIngredients && Object.keys(data.servingIngredients).length) withSizes++;
+              if (data.nutrition) withNutrition++;
             }
           } catch {
             // Fall back to cleaning what's stored
@@ -129,7 +139,22 @@ export function HelloFreshRefresh() {
               // Fall back to the built-in estimates
             }
           }
-          const ingredients = normalizeMealKitIngredients(collapsed, { bareAmountsAreMetric: true, blends }) as Ingredient[];
+          const normalized = normalizeMealKitIngredients(collapsed, { bareAmountsAreMetric: true, markPantry: true, blends });
+          // Supermarket names for kit-only products
+          let swaps: Record<string, string> = {};
+          const candidates = swapCandidates(normalized);
+          if (candidates.length) {
+            try {
+              swaps = (await api.post<{ swaps: Record<string, string> }>(
+                "/ai/product-swaps",
+                { names: candidates, title: recipe.title },
+                { timeoutMs: 60000 }
+              )).swaps;
+            } catch {
+              // Keep the kit's names
+            }
+          }
+          const ingredients = applyProductSwaps(normalized, swaps) as Ingredient[];
           if (JSON.stringify(ingredients) === JSON.stringify(recipe.ingredients)) {
             unchanged++;
             continue;
@@ -151,6 +176,8 @@ export function HelloFreshRefresh() {
         refetched ? `${refetched} re-imported from HelloFresh` : "",
         cleaned ? `${cleaned} cleaned up` : "",
         unchanged ? `${unchanged} already up to date` : "",
+        refetched ? `exact 3 and 4 person amounts for ${withSizes} of ${refetched}` : "",
+        refetched ? `nutrition for ${withNutrition} of ${refetched}` : "",
         failed.length ? `couldn't save: ${failed.join(", ")}` : "",
       ].filter(Boolean);
       setSummary(`${parts.join(". ")}. Re-add recipes to your shopping list to pick up the changes.`);
@@ -170,7 +197,7 @@ export function HelloFreshRefresh() {
       <p className="text-xs text-stone-500 dark:text-stone-400">
         {progress ||
           summary ||
-          "Fetches HelloFresh recipes again with the latest importer: units fixed, spice sachets worked out by the AI as everyday spices, step photos added. Your notes, tags and favourites are kept."}
+          "Fetches HelloFresh recipes again with the latest importer: units fixed, spice sachets worked out as everyday spices, kit-only products given supermarket names, pantry items marked, nutrition and 3–4 person amounts added where HelloFresh has them. Your notes, tags and favourites are kept."}
       </p>
     </div>
   );
