@@ -327,8 +327,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
     const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length), candidateCount);
     // One heading per ingredient isn't sectioning; keep only real groups
-    result.ingredients = dropMeaninglessGroups(result.ingredients.map((i) => ({ ...i, group: i.group ?? undefined })))
-      .map((i) => ({ ...i, group: i.group ?? null }));
+    result.ingredients = dropMeaninglessGroups(result.ingredients);
     // Meal-kit cards: bare amounts are grams, and spice sachets become everyday spices.
     if (looksLikeMealKit(result.ingredients.map((i) => ({ name: i.name, unit: i.unit ?? undefined })))) {
       const mealKitIngredients = result.ingredients.map((i) => ({ name: i.name, amount: i.amount ?? undefined, unit: i.unit ?? undefined, group: i.group ?? undefined, category: i.category ?? undefined }));

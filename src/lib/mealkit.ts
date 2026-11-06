@@ -323,7 +323,7 @@ const PANTRY_GROUP = /^(pantry|not included( in your (delivery|box))?|you will n
  * "group" (often its own name, or the previous line's), which shows as a heading per item.
  * Real sections (several items each), blend groups and the pantry group are kept.
  */
-export function dropMeaninglessGroups<T extends MealKitIngredient>(ingredients: T[]): T[] {
+export function dropMeaninglessGroups<T extends { name: string; group?: string | null }>(ingredients: T[]): T[] {
   const sizes = new Map<string, number>();
   for (const i of ingredients) if (i.group) sizes.set(i.group, (sizes.get(i.group) ?? 0) + 1);
   const singletons = [...sizes.values()].filter((n) => n === 1).length;
