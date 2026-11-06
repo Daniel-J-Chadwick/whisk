@@ -15,7 +15,8 @@ import {
 import { validateClientJsonLd } from "../../lib/recipe-jsonld";
 import { wrapUntrusted } from "../../lib/untrusted";
 import { parseIngredientLines } from "../../../src/lib/ingredient-parse";
-import { normalizeMealKitIngredients } from "../../../src/lib/mealkit";
+import { findBlendSachets, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
+import { resolveSpiceBlends } from "../../lib/spice-blends";
 
 interface Env extends ProviderEnv {
   WHISK_KV: KVNamespace;
@@ -486,9 +487,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const videoUrl = extractVideoUrl(html);
 
     // HelloFresh: bare amounts are grams, "unit" is a count, and spice sachets become everyday spices.
+    const rawParsedIngredients = parseIngredients(recipeData.recipeIngredient ?? []);
     const parsedIngredients = isHelloFresh
-      ? normalizeMealKitIngredients(parseIngredients(recipeData.recipeIngredient ?? []), { bareAmountsAreMetric: true })
-      : parseIngredients(recipeData.recipeIngredient ?? []);
+      ? normalizeMealKitIngredients(rawParsedIngredients, {
+          bareAmountsAreMetric: true,
+          // The AI works out what's in each spice sachet (cached per blend name)
+          blends: await resolveSpiceBlends(env, findBlendSachets(rawParsedIngredients), { title: recipeData.name }).catch(() => ({})),
+        })
+      : rawParsedIngredients;
     const tags = generateTags(recipeData, parsedIngredients);
     const rating = parseAggregateRating(recipeData.aggregateRating);
     const rawInstructions = recipeData.recipeInstructions ?? [];

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatTsp, isHelloFreshUrl, looksLikeMealKit, normalizeMealKitIngredients } from "../src/lib/mealkit";
+import { blendKey, collapseEstimatedBlends, findBlendSachets, formatTsp, isHelloFreshUrl, looksLikeMealKit, normalizeMealKitIngredients } from "../src/lib/mealkit";
 
 const norm = (ings: { name: string; amount?: string; unit?: string }[]) =>
   normalizeMealKitIngredients(ings, { bareAmountsAreMetric: true });
@@ -59,5 +59,41 @@ describe("helpers", () => {
     expect(isHelloFreshUrl("https://www.bbcgoodfood.com/recipes/x")).toBe(false);
     expect(looksLikeMealKit([{ name: "Stock paste", unit: "sachet" }])).toBe(true);
     expect(looksLikeMealKit([{ name: "Flour", amount: "200", unit: "g" }])).toBe(false);
+  });
+});
+
+describe("AI blends", () => {
+  const aiBlend = { label: "Smoky taco mix", parts: [{ name: "ancho chilli powder", tsp: 1.5 }, { name: "ground cumin", tsp: 1 }, { name: "dried oregano", tsp: 0.5 }] };
+  test("finds blend sachets but not single spices or stock", () => {
+    expect(findBlendSachets([
+      { name: "Central American Style Spice", amount: "1", unit: "sachet" },
+      { name: "Chinese Five Spice", amount: "1", unit: "sachet" },
+      { name: "Chicken Stock Paste", amount: "1", unit: "sachet" },
+      { name: "Bold Spice Blend", amount: "3", unit: "g" },
+      { name: "Flour", amount: "200", unit: "g" },
+    ])).toEqual(["Central American Style Spice", "Bold Spice Blend"]);
+  });
+  test("the AI's recipe beats the built-in table", () => {
+    const out = normalizeMealKitIngredients(
+      [{ name: "Central American Style Spice", amount: "2", unit: "sachet" }],
+      { blends: { [blendKey("Central American Style Spice")]: aiBlend } }
+    );
+    expect(out.map((i) => `${i.amount} ${i.name}`)).toEqual(["3 ancho chilli powder", "2 ground cumin", "1 dried oregano"]);
+    expect(out[0]!.group).toBe("Smoky taco mix (instead of Central American Style Spice)");
+  });
+  test("a blend unknown to the table is split only when the AI knows it", () => {
+    const ing = [{ name: "Bold Spice Blend", amount: "1", unit: "sachet" }];
+    expect(normalizeMealKitIngredients(ing)).toHaveLength(1);
+    expect(normalizeMealKitIngredients(ing, { blends: { [blendKey("Bold Spice Blend")]: aiBlend } })).toHaveLength(3);
+  });
+  test("an earlier split collapses back to sachets so it can be redone", () => {
+    const split = normalizeMealKitIngredients([
+      { name: "Cajun Spice Mix", amount: "2", unit: "sachet" },
+      { name: "Potatoes", amount: "450", unit: "g" },
+    ]);
+    expect(collapseEstimatedBlends(split)).toEqual([
+      { name: "Cajun Spice Mix", amount: "2", unit: "sachet" },
+      { name: "Potatoes", amount: "450", unit: "g" },
+    ]);
   });
 });

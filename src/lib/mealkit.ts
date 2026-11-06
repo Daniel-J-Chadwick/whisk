@@ -21,7 +21,7 @@ export interface MealKitIngredient {
   category?: string;
 }
 
-interface BlendPart {
+export interface BlendPart {
   name: string;
   /** Teaspoons per sachet. */
   tsp: number;
@@ -239,9 +239,73 @@ export function looksLikeMealKit(ingredients: MealKitIngredient[]): boolean {
   return ingredients.some((i) => SACHET.test((i.unit ?? "").trim()) || /\bsachets?\b/i.test(i.name) || /^units?$/i.test(i.unit ?? ""));
 }
 
+/** A blend's estimated make-up per sachet, as worked out by the AI (or the built-in table). */
+export interface BlendRecipe {
+  /** Short name for the mix, e.g. "Mexican-style spice mix". */
+  label: string;
+  parts: BlendPart[];
+}
+
 export interface MealKitOptions {
   /** Treat unitless amounts of 10+ as grams (or ml for liquids). On for meal-kit sources. */
   bareAmountsAreMetric?: boolean;
+  /**
+   * Blend recipes keyed by blendKey(name), usually from the AI. Used before the built-in
+   * table, which is only a fallback for when the AI isn't available.
+   */
+  blends?: Record<string, BlendRecipe>;
+}
+
+/** Lookup key for a blend name: lower case, no "sachet", single spaces, no footnote marks. */
+export function blendKey(name: string): string {
+  return cleanName(name).toLowerCase().replace(/\bsachets?(?: of)?\b/g, "").replace(/\s+/g, " ").trim();
+}
+
+const BLEND_WORDS = /\b(spice|spices|seasoning|rub|mix|blend|herbs|masala|curry powder)\b/;
+const STOCK = /^(chicken|beef|vegetable|veg|lamb|pork|fish|mushroom)\s+stock\s+(paste|pot|concentrate|gel)$/;
+
+/** Names of the pre-mixed spice sachets in a list (not single spices or stock), for the AI to work out. */
+export function findBlendSachets(ingredients: MealKitIngredient[]): string[] {
+  const names = new Set<string>();
+  for (const ing of ingredients) {
+    const unitLower = (ing.unit ?? "").toLowerCase().replace(/\(s\)$/, "").trim();
+    const key = blendKey(ing.name);
+    const isSachet = SACHET.test(unitLower) || /\bsachets?\b/i.test(ing.name) || unitLower === "g";
+    if (!isSachet || !BLEND_WORDS.test(key) || SINGLE_SPICES.test(key) || STOCK.test(key)) continue;
+    if (unitLower === "g" && (parseAmount(ing.amount) ?? 0) > 20) continue; // a 100 g bag isn't a sachet
+    names.add(cleanName(ing.name));
+  }
+  return [...names];
+}
+
+/**
+ * Undo an earlier blend split ("... (instead of Central American Style Spice)") back into one
+ * sachet line, so it can be worked out again. The sachet count is estimated from the teaspoons.
+ */
+export function collapseEstimatedBlends(ingredients: MealKitIngredient[]): MealKitIngredient[] {
+  const out: MealKitIngredient[] = [];
+  const seen = new Map<string, MealKitIngredient>();
+  for (const ing of ingredients) {
+    const m = /\(instead of (.+)\)$/.exec(ing.group ?? "");
+    if (!m) {
+      out.push(ing);
+      continue;
+    }
+    const tsp = parseAmount(ing.amount) ?? 0;
+    const existing = seen.get(ing.group!);
+    if (existing) {
+      existing.amount = String((parseAmount(existing.amount) ?? 0) + tsp);
+      continue;
+    }
+    const line: MealKitIngredient = { name: m[1]!, amount: String(tsp), unit: "sachet" };
+    seen.set(ing.group!, line);
+    out.push(line);
+  }
+  // A sachet is about 3 teaspoons of spice
+  for (const line of seen.values()) {
+    line.amount = String(Math.max(1, Math.round((parseAmount(line.amount) ?? 3) / 3)));
+  }
+  return out;
 }
 
 /** Clean one ingredient list. Returns a new array; the input is not changed. */
@@ -269,7 +333,7 @@ export function normalizeMealKitIngredients(
     const baseName = nameLower.replace(/\bsachets?(?: of)?\b/g, "").replace(/\s+/g, " ").trim();
 
     // Stock paste or stock pot sachets -> stock cubes (10 g sachet ≈ 1 cube)
-    const stock = /^(chicken|beef|vegetable|veg|lamb|pork|fish|mushroom)\s+stock\s+(paste|pot|concentrate|gel)$/.exec(baseName);
+    const stock = STOCK.exec(baseName);
     if (stock) {
       const kind = stock[1] === "veg" ? "vegetable" : stock[1]!;
       const u = (ing.unit ?? "").toLowerCase();
@@ -278,8 +342,10 @@ export function normalizeMealKitIngredients(
       continue;
     }
 
-    // Pre-mixed blend you can't buy -> its estimated parts
-    const blend = /\b(spice|seasoning|rub|mix|blend|herbs)\b/.test(baseName) || isSachet ? findBlend(baseName) : undefined;
+    // Pre-mixed blend you can't buy -> its estimated parts (AI first, built-in table as fallback)
+    const fromAi = isSachet || unitLower === "g" ? options.blends?.[blendKey(ing.name)] : undefined;
+    const tableBlend = BLEND_WORDS.test(baseName) || isSachet ? findBlend(baseName) : undefined;
+    const blend = fromAi ?? tableBlend;
     if (blend && !SINGLE_SPICES.test(baseName)) {
       const sachets = sachetCount(ing.amount, ing.unit);
       const group = `${blend.label} (instead of ${ing.name})`;

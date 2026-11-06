@@ -5,7 +5,8 @@ import {
   type ProviderEnv,
   type VisionAttachment,
 } from "../../lib/ai-providers";
-import { looksLikeMealKit, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
+import { findBlendSachets, looksLikeMealKit, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
+import { resolveSpiceBlends } from "../../lib/spice-blends";
 
 const MAX_FILES = 4;
 const MAX_CANDIDATES = 12;
@@ -325,10 +326,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length), candidateCount);
     // Meal-kit cards: bare amounts are grams, and spice sachets become everyday spices.
     if (looksLikeMealKit(result.ingredients.map((i) => ({ name: i.name, unit: i.unit ?? undefined })))) {
-      result.ingredients = normalizeMealKitIngredients(
-        result.ingredients.map((i) => ({ name: i.name, amount: i.amount ?? undefined, unit: i.unit ?? undefined, group: i.group ?? undefined, category: i.category ?? undefined })),
-        { bareAmountsAreMetric: true }
-      ).map((i) => ({ name: i.name, amount: i.amount ?? null, unit: i.unit ?? null, group: i.group ?? null, category: i.category ?? null }));
+      const mealKitIngredients = result.ingredients.map((i) => ({ name: i.name, amount: i.amount ?? undefined, unit: i.unit ?? undefined, group: i.group ?? undefined, category: i.category ?? undefined }));
+      const blends = await resolveSpiceBlends(env, findBlendSachets(mealKitIngredients), { title: result.title || undefined }).catch(() => ({}));
+      result.ingredients = normalizeMealKitIngredients(mealKitIngredients, { bareAmountsAreMetric: true, blends }).map((i) => ({ name: i.name, amount: i.amount ?? null, unit: i.unit ?? null, group: i.group ?? null, category: i.category ?? null }));
     }
 
     console.log(`[Whisk] RecipePhoto config=${configMs}ms upload=${uploadProcessMs}ms vision=${visionMs}ms total=${totalMs}ms photo=${photoSizeKB}KB ingredients=${result.ingredients?.length ?? 0} steps=${result.steps?.length ?? 0}`);

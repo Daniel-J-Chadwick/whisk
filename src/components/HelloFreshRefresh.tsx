@@ -2,7 +2,14 @@ import { useState } from "react";
 import type { Ingredient, Recipe, RecipeIndexEntry, RecipePhoto, Step } from "../types";
 import { api } from "../lib/api";
 import { CACHE_KEYS, setLocal } from "../lib/cache";
-import { isHelloFreshUrl, looksLikeMealKit, normalizeMealKitIngredients } from "../lib/mealkit";
+import {
+  collapseEstimatedBlends,
+  findBlendSachets,
+  isHelloFreshUrl,
+  looksLikeMealKit,
+  normalizeMealKitIngredients,
+  type BlendRecipe,
+} from "../lib/mealkit";
 import { Button } from "./ui/Button";
 
 interface ImportedRecipe {
@@ -17,6 +24,9 @@ interface ImportedRecipe {
   servings?: number;
 }
 
+/** Earlier split of a spice sachet into estimated spices. */
+const hasEstimatedBlend = (ingredients: Ingredient[]) => ingredients.some((i) => /\(instead of .+\)$/.test(i.group ?? ""));
+
 /** Three or more unitless amounts of 10+ ("450 potatoes"): a meal-kit list that lost its units. */
 function hasBareMetricAmounts(ingredients: Ingredient[]): boolean {
   return ingredients.filter((i) => !i.unit && /^\d+(\.\d+)?$/.test((i.amount ?? "").trim()) && Number(i.amount) >= 10).length >= 3;
@@ -27,6 +37,7 @@ function isHelloFreshRecipe(r: Recipe): boolean {
     isHelloFreshUrl(r.source?.url) ||
     /hellofresh/i.test(r.source?.attribution ?? "") ||
     looksLikeMealKit(r.ingredients) ||
+    hasEstimatedBlend(r.ingredients) ||
     hasBareMetricAmounts(r.ingredients)
   );
 }
@@ -93,7 +104,22 @@ export function HelloFreshRefresh() {
         }
 
         if (!updates) {
-          const ingredients = normalizeMealKitIngredients(recipe.ingredients, { bareAmountsAreMetric: true }) as Ingredient[];
+          // Undo any earlier table-based blend split, then let the AI work out each sachet
+          const collapsed = collapseEstimatedBlends(recipe.ingredients);
+          const blendNames = findBlendSachets(collapsed);
+          let blends: Record<string, BlendRecipe> = {};
+          if (blendNames.length) {
+            try {
+              blends = (await api.post<{ blends: Record<string, BlendRecipe> }>(
+                "/ai/spice-blends",
+                { names: blendNames, title: recipe.title },
+                { timeoutMs: 60000 }
+              )).blends;
+            } catch {
+              // Fall back to the built-in estimates
+            }
+          }
+          const ingredients = normalizeMealKitIngredients(collapsed, { bareAmountsAreMetric: true, blends }) as Ingredient[];
           if (JSON.stringify(ingredients) === JSON.stringify(recipe.ingredients)) {
             unchanged++;
             continue;
@@ -134,7 +160,7 @@ export function HelloFreshRefresh() {
       <p className="text-xs text-stone-500 dark:text-stone-400">
         {progress ||
           summary ||
-          "Fetches HelloFresh recipes again with the latest importer: units fixed, spice sachets split into everyday spices, step photos added. Your notes, tags and favourites are kept."}
+          "Fetches HelloFresh recipes again with the latest importer: units fixed, spice sachets worked out by the AI as everyday spices, step photos added. Your notes, tags and favourites are kept."}
       </p>
     </div>
   );
