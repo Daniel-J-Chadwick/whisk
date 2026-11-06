@@ -1,9 +1,10 @@
 /**
  * Turn recipe ingredients into grocery-list items: "1/2 cup diced onion" -> 1 onion,
- * "6 garlic cloves, minced" -> 1 head garlic, "2 large eggs" -> eggs.
+ * "6 garlic cloves, minced" -> 6 cloves garlic, "2 large eggs" -> eggs.
  * Pure and deterministic; the AI smart list can refine on top.
  */
 import { EXTRA_MEASURE_RE, parseIngredientLine } from "./ingredient-parse";
+import { isMisplacedPantry } from "./mealkit";
 
 export interface IngredientInput {
   name: string;
@@ -124,7 +125,7 @@ const BUYABLE: BuyableEntry[] = [
   { name: "mango", kind: "each", cupsPerEach: 1, aliases: ["mangoes", "mangos"] },
   { name: "ginger", kind: "package", aliases: ["fresh ginger", "ginger root", "gingerroot"] },
   // Produce sold by head
-  { name: "garlic", kind: "head", clovesPerHead: 10, aliases: ["garlic clove", "garlic cloves", "cloves garlic", "clove garlic", "cloves of garlic", "head garlic", "heads garlic"] },
+  { name: "garlic", kind: "head", clovesPerHead: 10, aliases: ["garlic clove", "garlic cloves", "cloves garlic", "clove garlic", "cloves of garlic", "head garlic", "heads garlic", "garlic bulb", "garlic bulbs", "bulb garlic", "bulbs garlic"] },
   { name: "romaine", kind: "head", aliases: ["romaine lettuce", "romaine hearts"] },
   { name: "lettuce", kind: "head", aliases: ["iceberg lettuce", "butter lettuce"] },
   { name: "cabbage", kind: "head", aliases: ["green cabbage", "red cabbage", "napa cabbage"] },
@@ -173,7 +174,9 @@ const BUYABLE: BuyableEntry[] = [
   { name: "spaghetti", kind: "package" },
   { name: "penne", kind: "package", aliases: ["penne pasta"] },
   { name: "tortellini", kind: "package", aliases: ["cheese tortellini", "refrigerated tortellini"] },
-  { name: "egg noodles", kind: "package" },
+  { name: "egg noodles", kind: "package", aliases: ["egg noodle nest", "egg noodle nests", "egg noodle"] },
+  { name: "mixed herbs", kind: "package", aliases: ["dried mixed herbs"] },
+  { name: "chinese five spice", kind: "package", aliases: ["five spice", "chinese 5 spice", "five spice powder"] },
   { name: "fish sauce", kind: "package" },
   { name: "rice vinegar", kind: "package", aliases: ["rice wine vinegar", "seasoned rice vinegar"] },
   { name: "balsamic vinegar", kind: "package" },
@@ -408,8 +411,9 @@ function convertOne(amount: string | undefined, unit: string | undefined, rawNam
       case "head": {
         if (u === "head" || u === "heads") return { name: entry.name, amount: countString(qty ?? 1), unit: "head" };
         const isCloves = u === "clove" || u === "cloves" || /\bcloves?\b/.test(name);
+        // Keep cloves so several recipes add up ("2 + 3 + 2 cloves"); the list shows bulbs too
         if (entry.clovesPerHead && isCloves && qty) {
-          return { name: entry.name, amount: countString(qty / entry.clovesPerHead), unit: "head" };
+          return { name: entry.name, amount: countString(qty), unit: "clove" };
         }
         return { name: entry.name, amount: "1", unit: "head" };
       }
@@ -449,7 +453,8 @@ function reparse(ing: IngredientInput): { name: string; amount?: string; unit?: 
 /** isPantryStaple for a stored ingredient, re-parsed so older data matches too. */
 export function isStapleIngredient(ing: IngredientInput): boolean {
   // Meal-kit "Pantry" items (not in the delivery) count as staples, so Add Essentials skips them
-  if (ing.group?.trim().toLowerCase() === "pantry") return true;
+  // (but not ones an older import put there by mistake, like "Egg Noodle Nest")
+  if (ing.group?.trim().toLowerCase() === "pantry" && !isMisplacedPantry(ing.name)) return true;
   return isPantryStaple(reparse(ing).name);
 }
 
@@ -461,7 +466,14 @@ export function isStapleIngredient(ing: IngredientInput): boolean {
 export function toBuyableItems(ing: IngredientInput): BuyableItem[] {
   const parsed = reparse(ing);
   // Notes in parentheses can hold commas ("(you can use fresh too, adjust)")
-  let name = parsed.name.replace(/\([^)]*\)?/g, " ").replace(/\s+/g, " ").trim();
+  // A supermarket swap keeps the kit's name in brackets ("Garlic bulb (Garlic Clove)"):
+  // when the kit's name is one we know how to buy (and the swap isn't something else), buy by
+  // that, since its amount is in the kit's terms (2 cloves, not 2 bulbs)
+  const swapped = parsed.name.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+  const kitEntry = swapped ? findEntry(cleanName(swapped[2]!)) : undefined;
+  const swapEntry = swapped ? findEntry(cleanName(swapped[1]!)) : undefined;
+  const raw = swapped && kitEntry && (!swapEntry || swapEntry === kitEntry) ? swapped[2]! : parsed.name;
+  let name = raw.replace(/\([^)]*\)?/g, " ").replace(/\s+/g, " ").trim();
   // "rapid-rise or other instant yeast" -> instant yeast (the generic is what to buy)
   const other = name.match(/\bor other\s+([^,]+)$/i);
   if (other?.[1]) name = other[1].trim();
@@ -498,6 +510,11 @@ export function pluralizeForAmount(amount: string | undefined, unit: string | un
   const qty = parseQuantity(amount);
   if (qty === null || qty <= 1) return { unit, name };
   if (unit) {
+    if (/^cloves?$/i.test(unit)) {
+      // "12 cloves garlic (about 2 bulbs)"
+      const bulbs = Math.ceil(qty / 10);
+      return { unit: "cloves", name: qty >= 5 ? `${name} (about ${bulbs} bulb${bulbs === 1 ? "" : "s"})` : name };
+    }
     return /^(head|bunch)$/i.test(unit) ? { unit: pluralize(unit), name } : { unit, name };
   }
   return { unit, name: pluralize(name) };

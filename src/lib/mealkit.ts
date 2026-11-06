@@ -268,8 +268,18 @@ export interface MealKitOptions {
 }
 
 /** Things meal kits expect you to have in: water, salt, pepper, oil, butter, sugar, eggs, milk, flour, honey. */
-const PANTRY_NAME =
-  /^(?:(?:cold|warm|boiling|tap)\s+)?(?:water|salt|sea salt|fine salt|(?:black |ground black )?pepper|(?:olive |vegetable |sunflower |rapeseed |cooking )?oil|butter|unsalted butter|(?:caster |granulated |brown |light brown )?sugar|eggs?|(?:whole |semi[- ]skimmed )?milk|(?:plain )?flour|honey)\b/i;
+const PANTRY_WORDS =
+  "(?:(?:cold|warm|boiling|tap)\\s+)?(?:water|salt|sea salt|fine salt|(?:black |ground black )?pepper|(?:olive |vegetable |sunflower |rapeseed |cooking )?oil|butter|unsalted butter|(?:caster |granulated |brown |light brown )?sugar|eggs?|(?:whole |semi[- ]skimmed )?milk|(?:plain )?flour|honey)";
+/** The whole name is the cupboard item, optionally with a note: "Olive oil for the dressing", "Butter*". */
+const PANTRY_NAME = new RegExp(`^${PANTRY_WORDS}(?=\\s*(?:$|[,*(]|for\\b|to\\b))`, "i");
+/** Older imports only checked the start of the name, so "Egg Noodle Nest" landed in Pantry. */
+const LOOSE_PANTRY_NAME = new RegExp(`^${PANTRY_WORDS}\\b`, "i");
+
+/** A "Pantry" item an older import put there by mistake ("Egg Noodle Nest", "Honey Roast Ham"). */
+export function isMisplacedPantry(name: string): boolean {
+  const lower = cleanName(name).toLowerCase().trim();
+  return LOOSE_PANTRY_NAME.test(lower) && !PANTRY_NAME.test(lower);
+}
 
 /** True for an ingredient that belongs in the Pantry group. */
 function isPantryItem(name: string, options: MealKitOptions): boolean {
@@ -378,6 +388,7 @@ export function normalizeMealKitIngredients(
     const ing: MealKitIngredient = { ...original, name: cleanName(original.name) };
     // Not included in the delivery: group as Pantry (blend parts keep their own group)
     if (!BLEND_GROUP.test(ing.group ?? "") && isPantryItem(ing.name, options)) ing.group = "Pantry";
+    else if (ing.group === "Pantry" && isMisplacedPantry(ing.name)) ing.group = undefined;
     const unitLower = (ing.unit ?? "").toLowerCase().replace(/\(s\)$/, "").trim();
     const nameLower = ing.name.toLowerCase();
 

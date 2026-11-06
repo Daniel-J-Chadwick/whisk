@@ -278,7 +278,7 @@ export function ShoppingList({
   const recipeNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const r of recipeIndex) {
-      map.set(r.id, decodeEntities(r.title));
+      map.set(r.id, decodeEntities(r.title).trim());
     }
     return map;
   }, [recipeIndex]);

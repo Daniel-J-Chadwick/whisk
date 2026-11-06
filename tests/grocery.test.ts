@@ -24,14 +24,27 @@ describe("toBuyableItems", () => {
     expect(label({ amount: "¼", unit: "cup", name: "lime juice" })).toEqual(["2 lime"]);
   });
 
-  test("garlic cloves become heads", () => {
-    expect(label({ amount: "6", name: "garlic cloves, minced" })).toEqual(["1 head garlic"]);
-    expect(label({ amount: "12", unit: "cloves", name: "garlic" })).toEqual(["2 head garlic"]);
+  test("garlic stays in cloves so recipes add up", () => {
+    expect(label({ amount: "6", name: "garlic cloves, minced" })).toEqual(["6 clove garlic"]);
+    expect(label({ amount: "12", unit: "cloves", name: "garlic" })).toEqual(["12 clove garlic"]);
+    expect(label({ amount: "2", unit: "unit(s)", name: "Garlic Clove" })).toEqual(["2 clove garlic"]);
     expect(label({ amount: "1", unit: "tbsp", name: "minced garlic" })).toEqual(["1 head garlic"]);
+    expect(label({ amount: "1", name: "garlic bulb" })).toEqual(["1 head garlic"]);
+  });
+
+  test("a supermarket swap that changed the form buys by the kit's name", () => {
+    expect(label({ amount: "2", name: "Garlic bulb (Garlic Clove)" })).toEqual(["2 clove garlic"]);
+    expect(label({ amount: "40", unit: "g", name: "Sweet soy sauce (Ketjap Manis)" })).toEqual(["40 g sweet soy sauce"]);
+  });
+
+  test("HelloFresh noodles and herb sachets", () => {
+    expect(label({ amount: "125", unit: "g", name: "Egg Noodle Nest" })).toEqual(["125 g egg noodles"]);
+    expect(label({ amount: "1", name: "Dried mixed herbs" })).toEqual(["mixed herbs"]);
+    expect(label({ name: "Mixed herbs" })).toEqual(["mixed herbs"]);
   });
 
   test("stale split-letter data is repaired", () => {
-    expect(label({ amount: "6", unit: "g", name: "Arlic cloves" })).toEqual(["1 head garlic"]);
+    expect(label({ amount: "6", unit: "g", name: "Arlic cloves" })).toEqual(["6 clove garlic"]);
     expect(label({ amount: "1", name: "or 2 sprigs parsley or cilantro, for garnish" })).toEqual(["1 bunch parsley"]);
     expect(label({ amount: "2", name: "-1/4 teaspoons fresh basil" })).toEqual(["1 bunch basil"]);
   });
@@ -108,7 +121,7 @@ describe("buildRecipeItems", () => {
     ]);
     expect(items).toEqual([
       { name: "onion", amount: "2" },
-      { name: "garlic", amount: "1", unit: "head" },
+      { name: "garlic", amount: "5", unit: "clove" },
       { name: "butter" },
       { name: "eggs" },
     ]);
@@ -131,6 +144,8 @@ describe("pluralizeForAmount", () => {
     expect(pluralizeForAmount("3", undefined, "onion")).toEqual({ unit: undefined, name: "onions" });
     expect(pluralizeForAmount("2", undefined, "tomato")).toEqual({ unit: undefined, name: "tomatoes" });
     expect(pluralizeForAmount("2", "head", "garlic")).toEqual({ unit: "heads", name: "garlic" });
+    expect(pluralizeForAmount("12", "clove", "garlic")).toEqual({ unit: "cloves", name: "garlic (about 2 bulbs)" });
+    expect(pluralizeForAmount("3", "clove", "garlic")).toEqual({ unit: "cloves", name: "garlic" });
     expect(pluralizeForAmount("2", "bunch", "parsley")).toEqual({ unit: "bunches", name: "parsley" });
     expect(pluralizeForAmount("1", undefined, "lemon")).toEqual({ unit: undefined, name: "lemon" });
     expect(pluralizeForAmount("8", undefined, "corn tortillas")).toEqual({ unit: undefined, name: "corn tortillas" });
@@ -154,7 +169,7 @@ describe("tidyRecipeItems", () => {
     );
     expect(changed).toBe(true);
     expect(items.map((i) => [i.id, i.amount, i.unit, i.name, i.sourceRecipeId])).toEqual([
-      ["a", "1", "head", "garlic", "r1"],
+      ["a", "6", "clove", "garlic", "r1"],
       ["b", "1", undefined, "onion", "r1"],
       ["c", undefined, undefined, "chile crisp", "r2"],
       ["new-1", "1", undefined, "lemon", "r2"],
@@ -277,5 +292,22 @@ describe("HelloFresh ingredient spellings", () => {
       expect(categorizeIngredient(n)).toBe("pantry");
     }
     expect(categorizeIngredient("baby leaf mix")).toBe("produce");
+  });
+});
+
+describe("HelloFresh list fixes", () => {
+  test("noodles an older import marked Pantry are still bought", () => {
+    expect(isStapleIngredient({ name: "Egg Noodle Nest", amount: "125", unit: "g", group: "Pantry" })).toBe(false);
+    expect(isStapleIngredient({ name: "Eggs", amount: "1", group: "Pantry" })).toBe(true);
+    expect(isStapleIngredient({ name: "Olive Oil for the Dressing", group: "Pantry" })).toBe(true);
+  });
+
+  test("aisles for UK kit items", () => {
+    expect(categorizeIngredient("Tomato purée")).toBe("pantry");
+    expect(categorizeIngredient("Passata")).toBe("pantry");
+    expect(categorizeIngredient("Grana padano")).toBe("dairy");
+    expect(categorizeIngredient("Mushroom pâté")).toBe("dairy");
+    expect(categorizeIngredient("Egg noodles")).toBe("pantry");
+    expect(categorizeIngredient("Prosciutto tortelloni")).toBe("pantry");
   });
 });

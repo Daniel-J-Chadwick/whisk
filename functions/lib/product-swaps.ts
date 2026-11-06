@@ -11,7 +11,8 @@ interface SwapEnv extends ProviderEnv {
   WHISK_KV: KVNamespace;
 }
 
-const CACHE_PREFIX = "product_swap:v1:";
+// v2: answers that changed a pack or form ("Garlic Clove" -> "Garlic bulb") are no longer kept
+const CACHE_PREFIX = "product_swap:v2:";
 const ANTHROPIC_SWAP_MODEL = "claude-sonnet-5-5";
 const MAX_NAMES = 30;
 
@@ -23,6 +24,10 @@ function cleanSwap(v: unknown, original: string): string | null {
   if (typeof v !== "string") return null;
   const s = v.replace(/[*"]/g, "").replace(/\s+/g, " ").trim();
   if (!s || s.length > 40 || s.toLowerCase() === original.toLowerCase()) return null;
+  // A swap names the product; it never changes the pack or form, so the kit's amount still fits
+  const PACK = /\b(bulbs?|heads?|nets?|packs?|bags?|tins?|cans?|jars?|cartons?|nests?|bunch(es)?|punnets?|cloves?)\b/gi;
+  const packs = (t: string) => (t.toLowerCase().match(PACK) ?? []).map((w) => w.replace(/s$/, "")).sort().join(",");
+  if (packs(s) !== packs(original)) return null;
   return s;
 }
 
@@ -60,6 +65,7 @@ export async function resolveProductSwaps(
     '(e.g. "Hard Italian Style Cheese" is sold as "Grana Padano", "Mature Cheddar Cheese" is fine as it is).',
     "For each, give the name to look for in a UK supermarket, or null if the name is already what you'd buy.",
     "Keep swaps short (1-4 words), a real product, no brands. Don't change spices, fresh produce or meat cuts that are already clear.",
+    'Never change the pack, form or amount: "Garlic Clove" is null (not "Garlic bulb"), "Bell Pepper" is null.',
     "",
     "Ingredients:",
     ...misses.map(([, name], i) => `${i + 1}. ${name}`),

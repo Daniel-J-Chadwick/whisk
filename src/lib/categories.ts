@@ -37,6 +37,7 @@ const CATEGORY_KEYWORDS: Record<ShoppingCategory, string[]> = {
     "sharp cheddar", "sour cream", "swiss", "whipping cream",
     "whipped cream", "yogurt", "almond milk", "soy milk", "coconut milk",
     "brie", "camembert", "manchego", "asiago", "romano", "tzatziki",
+    "grana padano", "halloumi", "paneer", "pate", "soured cream",
   ],
   meat: [
     "anchovy", "bacon", "bass", "beef", "bratwurst", "brisket", "catfish",
@@ -90,6 +91,7 @@ const CATEGORY_KEYWORDS: Record<ShoppingCategory, string[]> = {
     "kidney bean", "pinto bean", "navy bean", "cannellini", "white bean",
     "refried bean", "lima bean", "olive", "kalamata", "castelvetrano",
     "canned", "dried", "seed",
+    "puree", "passata", "chopped tomatoes", "tinned", "tortelloni", "noodle nest",
   ],
   snacks: [
     "chip", "corn chip", "crouton", "dip", "fruit snack",
@@ -137,7 +139,8 @@ const CATEGORY_KEYWORDS: Record<ShoppingCategory, string[]> = {
  * - strip trailing punctuation, "and", commas
  */
 function normalizeForMatch(name: string): string {
-  let lower = name.toLowerCase().trim();
+  // Accents off, so "pâté" and "purée" match whole words
+  let lower = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   // Strip leading numbers & units like "2 cups", "1/2 lb", "1 can"
   lower = lower.replace(/^[\d\/.\s]+(oz|lb|cup|tbsp|tsp|g|kg|ml|l|pt|qt|gal|bunch|head|can|pkg|bag|box|jar|bottle|ct|count|stick|clove|sprig|slice|piece|each|rib|stalk)s?\b\s*/i, "");
   lower = lower.replace(/^[\d\/.\s]+/, "").trim();
@@ -230,6 +233,11 @@ export function categorizeIngredient(name: string): ShoppingCategory {
     if (baseVariants.some((v) => AMBIGUOUS_PRODUCE.has(v))) {
       return "pantry";
     }
+  }
+
+  // Priority rule: noodles and filled pasta sit with the pasta ("egg noodles", "prosciutto tortelloni")
+  if (/\b(noodles?|tortell[io]ni|ravioli|gnocchi)\b/.test(normalized)) {
+    return "pantry";
   }
 
   // Priority rule: broth and stock are shelf-stable cartons, even "chicken broth"

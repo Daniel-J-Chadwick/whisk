@@ -97,7 +97,7 @@ export function HelloFreshRefresh() {
             );
             if (data.ingredients?.length && data.steps?.length) {
               updates = {
-                title: data.title || recipe.title,
+                title: (data.title || recipe.title).trim(),
                 description: data.description || recipe.description,
                 ingredients: data.ingredients,
                 steps: data.steps,

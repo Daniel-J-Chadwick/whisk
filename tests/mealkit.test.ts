@@ -157,4 +157,14 @@ describe("pantry and spice prefixes", () => {
     const shipped = normalizeMealKitIngredients([{ name: "Breadcrumbs", amount: "50", unit: "g" }], { notShipped: new Set(["breadcrumbs"]) });
     expect(shipped[0]!.group).toBe("Pantry");
   });
+  test("only the whole cupboard item is Pantry, not things that start with one", () => {
+    const out = normalizeMealKitIngredients(
+      [{ name: "Egg Noodle Nest", amount: "125", unit: "g" }, { name: "Honey Roast Ham", amount: "60", unit: "g" }, { name: "Flour Tortilla", amount: "2" }, { name: "Butter*", amount: "15", unit: "g" }],
+      { markPantry: true }
+    );
+    expect(out.map((i) => i.group ?? null)).toEqual([null, null, null, "Pantry"]);
+    // An older import's mistake is undone on re-import
+    const fixed = normalizeMealKitIngredients([{ name: "Egg Noodle Nest", amount: "125", unit: "g", group: "Pantry" }], { markPantry: true });
+    expect(fixed[0]!.group ?? null).toBeNull();
+  });
 });
