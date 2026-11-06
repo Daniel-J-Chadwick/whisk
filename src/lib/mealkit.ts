@@ -315,6 +315,44 @@ export function collapseEstimatedBlends(ingredients: MealKitIngredient[]): MealK
   return out;
 }
 
+const BLEND_GROUP = /\(instead of .+\)$/;
+const PANTRY_GROUP = /^(pantry|not included( in your (delivery|box))?|you will need|from your cupboard|store cupboard)$/i;
+
+/**
+ * Remove groups that aren't real sections. Scans and some pages give each ingredient its own
+ * "group" (often its own name, or the previous line's), which shows as a heading per item.
+ * Real sections (several items each), blend groups and the pantry group are kept.
+ */
+export function dropMeaninglessGroups<T extends MealKitIngredient>(ingredients: T[]): T[] {
+  const sizes = new Map<string, number>();
+  for (const i of ingredients) if (i.group) sizes.set(i.group, (sizes.get(i.group) ?? 0) + 1);
+  const singletons = [...sizes.values()].filter((n) => n === 1).length;
+  // Mostly one-item groups: the grouping is noise
+  const noisy = singletons >= 3 && singletons >= sizes.size / 2;
+  return ingredients.map((i) => {
+    if (!i.group) return i;
+    const group = i.group.trim().replace(/:$/, "");
+    if (BLEND_GROUP.test(group)) return i;
+    if (PANTRY_GROUP.test(group)) return { ...i, group: "Pantry" };
+    const ownName = group.toLowerCase() === cleanName(i.name).toLowerCase();
+    if (ownName || (noisy && sizes.get(i.group) === 1)) {
+      const { group: _drop, ...rest } = i;
+      return rest as T;
+    }
+    return i;
+  });
+}
+
+/** "1 cartons" -> "1 carton": shop units read singular for one. */
+function singularUnit(unit: string | undefined, qty: number | null): string | undefined {
+  if (!unit || qty === null || qty > 1) return unit;
+  const u = unit.toLowerCase();
+  if (/^(cartons|sachets|packs|pots|tins|tubs|punnets|pouches|bags|jars|cans|bunches|heads|cloves|balls|trays|nets|boxes|bottles)$/.test(u)) {
+    return unit.replace(/(ch|sh|x)es$/i, "$1").replace(/s$/i, "");
+  }
+  return unit;
+}
+
 /** Clean one ingredient list. Returns a new array; the input is not changed. */
 export function normalizeMealKitIngredients(
   ingredients: MealKitIngredient[],
@@ -322,7 +360,7 @@ export function normalizeMealKitIngredients(
 ): MealKitIngredient[] {
   const out: MealKitIngredient[] = [];
 
-  for (const original of ingredients) {
+  for (const original of dropMeaninglessGroups(ingredients)) {
     const ing: MealKitIngredient = { ...original, name: cleanName(original.name) };
     const unitLower = (ing.unit ?? "").toLowerCase().replace(/\(s\)$/, "").trim();
     const nameLower = ing.name.toLowerCase();
@@ -333,6 +371,7 @@ export function normalizeMealKitIngredients(
 
     // Bare amounts: "450 potatoes" means 450 g
     const qty = parseAmount(ing.amount);
+    ing.unit = singularUnit(ing.unit, qty);
     if (options.bareAmountsAreMetric && !ing.unit && qty !== null && qty >= 10 && !COUNTED.test(nameLower)) {
       ing.unit = LIQUID.test(nameLower) ? "ml" : "g";
     }

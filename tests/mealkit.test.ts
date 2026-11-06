@@ -115,3 +115,31 @@ describe("HelloFresh (s) wording", () => {
     expect(out.map((i) => [i.amount, i.unit, i.name].filter(Boolean).join(" "))).toEqual(["450 g Potatoes", "100 ml Water for the Sauce", "1 Bell Pepper"]);
   });
 });
+
+describe("groups and singular units", () => {
+  test("one heading per ingredient is dropped; real sections and pantry are kept", async () => {
+    const { dropMeaninglessGroups } = await import("../src/lib/mealkit");
+    const out = dropMeaninglessGroups([
+      { name: "Potatoes", amount: "450", unit: "g", group: "Potatoes" },
+      { name: "Sausage Meat", amount: "225", unit: "g", group: "Potatoes" },
+      { name: "Garlic Clove", amount: "2", group: "Sausage Meat" },
+      { name: "Passata", amount: "1", unit: "carton", group: "Garlic Clove" },
+      { name: "Peas", amount: "120", unit: "g", group: "Passata" },
+      { name: "Cheddar", amount: "30", unit: "g", group: "Not included in your delivery" },
+      { name: "Sugar", amount: "1", unit: "tsp", group: "Not included in your delivery" },
+    ]);
+    expect(out.map((i) => i.group ?? null)).toEqual([null, "Potatoes", null, null, null, "Pantry", "Pantry"]);
+  });
+  test("real sections survive", async () => {
+    const { dropMeaninglessGroups } = await import("../src/lib/mealkit");
+    const ings = [
+      { name: "Flour", group: "For the dough" }, { name: "Yeast", group: "For the dough" },
+      { name: "Tomatoes", group: "For the sauce" }, { name: "Basil", group: "For the sauce" },
+    ];
+    expect(dropMeaninglessGroups(ings)).toEqual(ings);
+  });
+  test("1 cartons reads 1 carton", () => {
+    expect(normalizeMealKitIngredients([{ name: "Tomato Passata", amount: "1", unit: "cartons" }])[0]!.unit).toBe("carton");
+    expect(normalizeMealKitIngredients([{ name: "Tomato Passata", amount: "2", unit: "cartons" }])[0]!.unit).toBe("cartons");
+  });
+});

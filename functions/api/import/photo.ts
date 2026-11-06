@@ -5,7 +5,7 @@ import {
   type ProviderEnv,
   type VisionAttachment,
 } from "../../lib/ai-providers";
-import { findBlendSachets, looksLikeMealKit, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
+import { dropMeaninglessGroups, findBlendSachets, looksLikeMealKit, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
 import { resolveSpiceBlends } from "../../lib/spice-blends";
 
 const MAX_FILES = 4;
@@ -256,7 +256,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     '  "title": "Recipe name",',
     '  "description": "Brief description if visible, or null",',
     '  "ingredients": [',
-    '    { "name": "ingredient name (no amounts)", "amount": "numeric amount or fraction", "unit": "measurement unit", "group": "section header if grouped, or null", "category": "produce" | "dairy" | "meat" | "pantry" | "frozen" | "bakery" | "beverages" | "snacks" | "other" }',
+    '    { "name": "ingredient name (no amounts)", "amount": "numeric amount or fraction", "unit": "measurement unit", "group": "a section heading shared by several ingredients (e.g. \"For the sauce\", \"Pantry\"), else null. Never the ingredient's own name", "category": "produce" | "dairy" | "meat" | "pantry" | "frozen" | "bakery" | "beverages" | "snacks" | "other" }',
     '  ],',
     '  "steps": [',
     '    { "text": "Full step instruction", "timerMinutes": estimated_minutes_or_null, "group": "section header if grouped, or null" }',
@@ -324,6 +324,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       throw new Error(`AI reply contained no JSON (${content.length} chars)`);
     }
     const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length), candidateCount);
+    // One heading per ingredient isn't sectioning; keep only real groups
+    result.ingredients = dropMeaninglessGroups(result.ingredients.map((i) => ({ ...i, group: i.group ?? undefined })))
+      .map((i) => ({ ...i, group: i.group ?? null }));
     // Meal-kit cards: bare amounts are grams, and spice sachets become everyday spices.
     if (looksLikeMealKit(result.ingredients.map((i) => ({ name: i.name, unit: i.unit ?? undefined })))) {
       const mealKitIngredients = result.ingredients.map((i) => ({ name: i.name, amount: i.amount ?? undefined, unit: i.unit ?? undefined, group: i.group ?? undefined, category: i.category ?? undefined }));
