@@ -226,8 +226,15 @@ function sachetCount(amount: string | undefined, unit: string | undefined): numb
 }
 
 function cleanName(name: string): string {
-  return name.replace(/\*+/g, "").replace(/\s+/g, " ").trim();
+  return name.replace(/\*+/g, "").replace(/^\(s\)\s*/i, "").replace(/\s+/g, " ").trim();
 }
+
+/** Short spellings for metric units ("grams" -> "g", "milliliter(s)" -> "ml"). */
+const SHORT_UNITS: Record<string, string> = {
+  gram: "g", grams: "g", kilogram: "kg", kilograms: "kg",
+  milliliter: "ml", milliliters: "ml", millilitre: "ml", millilitres: "ml",
+  liter: "l", liters: "l", litre: "l", litres: "l",
+};
 
 function findBlend(lowerName: string): Blend | undefined {
   // A blend mentions spice/seasoning/mix, or is one of the named regional blends.
@@ -320,8 +327,9 @@ export function normalizeMealKitIngredients(
     const unitLower = (ing.unit ?? "").toLowerCase().replace(/\(s\)$/, "").trim();
     const nameLower = ing.name.toLowerCase();
 
-    // "1 unit red onion": unit is a count
+    // "1 unit red onion": unit is a count; metric units get their short spelling
     if (/^units?$/.test(unitLower)) ing.unit = undefined;
+    else if (SHORT_UNITS[unitLower]) ing.unit = SHORT_UNITS[unitLower];
 
     // Bare amounts: "450 potatoes" means 450 g
     const qty = parseAmount(ing.amount);

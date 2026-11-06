@@ -503,6 +503,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     // HelloFresh: attach each numbered step's photo to its step.
     if (isHelloFresh) {
+      // Their step text drops bold markup and leaves a space before punctuation ("the onion .")
+      for (const step of steps) step.text = step.text.replace(/\s+([.,;:!?)])/g, "$1").replace(/\(\s+/g, "(");
       const stepPhotos = extractHelloFreshStepPhotos(html, url);
       const pairing = pairStepPhotos(
         rawInstructions,

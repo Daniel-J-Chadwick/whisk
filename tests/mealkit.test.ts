@@ -97,3 +97,21 @@ describe("AI blends", () => {
     ]);
   });
 });
+
+describe("HelloFresh (s) wording", () => {
+  test("unit(s), milliliter(s) and sachet(s) parse as units, not names", async () => {
+    const { parseIngredientLine } = await import("../src/lib/ingredient-parse");
+    expect(parseIngredientLine("1 unit(s) Bell Pepper")).toMatchObject({ amount: "1", name: "Bell Pepper" });
+    expect(parseIngredientLine("100 milliliter(s) Water for the Sauce")).toMatchObject({ amount: "100", name: "Water for the Sauce" });
+    expect(parseIngredientLine("1 sachet(s) Salt & Pepper Seasoning")).toMatchObject({ amount: "1", name: "Salt & Pepper Seasoning" });
+    expect(parseIngredientLine("1 (s) Egg")).toMatchObject({ amount: "1", name: "Egg" });
+  });
+  test("units are shortened and stray (s) removed in stored recipes", () => {
+    const out = normalizeMealKitIngredients([
+      { name: "Potatoes", amount: "450", unit: "grams" },
+      { name: "Water for the Sauce", amount: "100", unit: "milliliters" },
+      { name: "(s) Bell Pepper", amount: "1", unit: "units" },
+    ]);
+    expect(out.map((i) => [i.amount, i.unit, i.name].filter(Boolean).join(" "))).toEqual(["450 g Potatoes", "100 ml Water for the Sauce", "1 Bell Pepper"]);
+  });
+});

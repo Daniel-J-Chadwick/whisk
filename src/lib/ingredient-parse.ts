@@ -210,7 +210,11 @@ export function parseIngredientLine(line: string): ParsedIngredient | null {
     // "1 .5 tablespoons" is 1.5
     .replace(/(\d)\s+\.(\d)/g, "$1.$2")
     // "28 -ounce can" (split by older saves) is "28-ounce can"
-    .replace(/(\d)\s+-(ounce|oz|inch|pound|lb|gram|quart|pint)/gi, "$1-$2");
+    .replace(/(\d)\s+-(ounce|oz|inch|pound|lb|gram|quart|pint)/gi, "$1-$2")
+    // HelloFresh writes "unit(s)", "milliliter(s)", "sachet(s)": read them as plurals
+    .replace(/\b([a-z]+)\(s\)(?=\s|$)/gi, "$1s")
+    // A stray "(s)" left on the front of a name by older saves
+    .replace(/^(\S+\s+)?\(s\)\s+/i, "$1");
   if (!cleaned) return null;
   const match = cleaned.match(LINE_RE);
   if (!match) return { name: cleaned };
