@@ -437,7 +437,7 @@ export function ShoppingList({
 
   const renderItem = (item: ShoppingItem & { _mergedIds?: string[]; _mergedSources?: string[] }) => {
     const plural = pluralizeForAmount(item.amount, item.unit, item.name);
-    const displayText = abbreviateName(decodeEntities(plural.name));
+    const displayText = abbreviateName(decodeEntities(plural.name)) + (plural.note ? ` (${plural.note})` : "");
     const shortUnit = abbreviateUnit(plural.unit);
     const fullLabel = decodeEntities([item.amount, shortUnit, displayText].filter(Boolean).join(" "));
     const mergedIds = item._mergedIds;

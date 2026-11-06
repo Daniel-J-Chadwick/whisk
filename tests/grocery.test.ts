@@ -41,6 +41,7 @@ describe("toBuyableItems", () => {
     expect(label({ amount: "125", unit: "g", name: "Egg Noodle Nest" })).toEqual(["125 g egg noodles"]);
     expect(label({ amount: "1", name: "Dried mixed herbs" })).toEqual(["mixed herbs"]);
     expect(label({ name: "Mixed herbs" })).toEqual(["mixed herbs"]);
+    expect(label({ amount: "1", unit: "carton", name: "Tinned black beans (Black Beans)" })).toEqual(["1 tin tinned black beans"]);
   });
 
   test("stale split-letter data is repaired", () => {
@@ -144,7 +145,7 @@ describe("pluralizeForAmount", () => {
     expect(pluralizeForAmount("3", undefined, "onion")).toEqual({ unit: undefined, name: "onions" });
     expect(pluralizeForAmount("2", undefined, "tomato")).toEqual({ unit: undefined, name: "tomatoes" });
     expect(pluralizeForAmount("2", "head", "garlic")).toEqual({ unit: "heads", name: "garlic" });
-    expect(pluralizeForAmount("12", "clove", "garlic")).toEqual({ unit: "cloves", name: "garlic (about 2 bulbs)" });
+    expect(pluralizeForAmount("12", "clove", "garlic")).toEqual({ unit: "cloves", name: "garlic", note: "about 2 bulbs" });
     expect(pluralizeForAmount("3", "clove", "garlic")).toEqual({ unit: "cloves", name: "garlic" });
     expect(pluralizeForAmount("2", "bunch", "parsley")).toEqual({ unit: "bunches", name: "parsley" });
     expect(pluralizeForAmount("1", undefined, "lemon")).toEqual({ unit: undefined, name: "lemon" });

@@ -489,6 +489,10 @@ export function toBuyableItems(ing: IngredientInput): BuyableItem[] {
     const item = convertOne(sub.amount, sub.unit, sub.name);
     if (item) items.push(item);
   });
+  // "1 carton Tinned black beans" (the kit's carton, the supermarket's tin) -> 1 tin
+  for (const item of items) {
+    if (/^cartons?$/i.test(item.unit ?? "") && /\b(tinned|canned)\b/i.test(item.name)) item.unit = /s$/i.test(item.unit!) ? "tins" : "tin";
+  }
   return items;
 }
 
@@ -506,14 +510,14 @@ export function pluralize(word: string): string {
  * Pluralize the unit (or the name, for counted items) when the amount is above 1,
  * so a combined list reads "2 heads garlic" and "3 onions".
  */
-export function pluralizeForAmount(amount: string | undefined, unit: string | undefined, name: string): { unit?: string; name: string } {
+export function pluralizeForAmount(amount: string | undefined, unit: string | undefined, name: string): { unit?: string; name: string; note?: string } {
   const qty = parseQuantity(amount);
   if (qty === null || qty <= 1) return { unit, name };
   if (unit) {
     if (/^cloves?$/i.test(unit)) {
-      // "12 cloves garlic (about 2 bulbs)"
+      // "12 cloves garlic (about 2 bulbs)": the note is shown after the name
       const bulbs = Math.ceil(qty / 10);
-      return { unit: "cloves", name: qty >= 5 ? `${name} (about ${bulbs} bulb${bulbs === 1 ? "" : "s"})` : name };
+      return qty >= 5 ? { unit: "cloves", name, note: `about ${bulbs} bulb${bulbs === 1 ? "" : "s"}` } : { unit: "cloves", name };
     }
     return /^(head|bunch)$/i.test(unit) ? { unit: pluralize(unit), name } : { unit, name };
   }
