@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { UK_TAG_ALIASES, ukTags } from "./lib/tags";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import { useTheme } from "./hooks/useTheme";
@@ -167,6 +168,18 @@ function AppShell({
 }) {
   const recipes = useRecipes();
   const shoppingList = useShoppingList();
+
+  // One-off: rename US tags on existing recipes ("fall" -> "autumn"). Idempotent; runs once per session.
+  const tagsMigrated = useRef(false);
+  useEffect(() => {
+    if (tagsMigrated.current || recipes.recipes.length === 0) return;
+    tagsMigrated.current = true;
+    for (const r of recipes.recipes) {
+      if (r.tags.some((t) => t.toLowerCase() in UK_TAG_ALIASES)) {
+        recipes.updateRecipe(r.id, { tags: ukTags(r.tags) }).catch(() => {});
+      }
+    }
+  }, [recipes.recipes, recipes.updateRecipe]);
   const mealPlan = useMealPlan();
   const timers = useTimers();
   const tags = useTags();

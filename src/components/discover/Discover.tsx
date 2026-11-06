@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { classNames, formatTime, formatTotalTime, normalizeSearch } from "../../lib/utils";
-import { TIME_RANGES } from "../../lib/tags";
+import { TIME_RANGES, ukTag } from "../../lib/tags";
 import { api, ApiRequestError, IMPORT_URL_TIMEOUT_MS } from "../../lib/api";
 import { detectSavePlatform, isBookmarkletInstalled } from "../../lib/platform";
 import { CarouselRow } from "../ui/CarouselRow";
@@ -87,7 +87,7 @@ const TYPE_LABELS: Record<DiscoverCategory, string> = {
   salad: "Salads",
   soups: "Soups & Stews",
   dessert: "Desserts",
-  appetizer: "Appetizers",
+  appetizer: "Starters",
   drinks: "Drinks",
   snack: "Snacks",
   baking: "Baking",
@@ -164,25 +164,25 @@ const DIET_LABELS: Record<DietOption, string> = {
 
 /** Season options for tag-based filtering */
 const SEASON_OPTIONS = [
-  "summer", "fall", "winter", "spring",
-  "christmas", "thanksgiving", "halloween", "easter",
-  "july 4th", "valentines", "st patricks", "cinco de mayo", "new years", "birthday",
+  "summer", "autumn", "winter", "spring",
+  "christmas", "bonfire night", "halloween", "easter",
+  "pancake day", "valentines", "st patricks", "burns night", "new years", "birthday",
 ] as const;
 type SeasonOption = typeof SEASON_OPTIONS[number];
 
 const SEASON_LABELS: Record<SeasonOption, string> = {
   summer: "Summer",
-  fall: "Fall",
+  autumn: "Autumn",
   winter: "Winter",
   spring: "Spring",
   christmas: "Christmas",
-  thanksgiving: "Thanksgiving",
+  "bonfire night": "Bonfire Night",
   halloween: "Halloween",
   easter: "Easter",
-  "july 4th": "July 4th",
+  "pancake day": "Pancake Day",
   valentines: "Valentine's",
   "st patricks": "St. Patrick's",
-  "cinco de mayo": "Cinco de Mayo",
+  "burns night": "Burns Night",
   "new years": "New Year's",
   birthday: "Birthday",
 };
@@ -1040,7 +1040,7 @@ export function Discover({
 
     // Season filter (tag match)
     if (selectedSeason) {
-      items = items.filter((i) => i.tags?.includes(selectedSeason));
+      items = items.filter((i) => i.tags?.some((t) => ukTag(t) === selectedSeason));
     }
 
     // Time filter
@@ -1118,7 +1118,7 @@ export function Discover({
     [allItems]
   );
   const availableSeasons = useMemo(() =>
-    SEASON_OPTIONS.filter((season) => allItems.some((i) => i.tags?.includes(season))),
+    SEASON_OPTIONS.filter((season) => allItems.some((i) => i.tags?.some((t) => ukTag(t) === season))),
     [allItems]
   );
 

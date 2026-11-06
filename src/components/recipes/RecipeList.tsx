@@ -119,7 +119,7 @@ export function RecipeList({
     [recipes, search, selectedTags, favoritesOnly, sort, maxTime]
   );
 
-  const CATEGORY_ORDER = ["breakfast", "brunch", "dinner", "salad", "soup", "dessert", "appetizer", "snack", "side dish"];
+  const CATEGORY_ORDER = ["breakfast", "brunch", "dinner", "salad", "soup", "dessert", "starter", "snack", "side dish"];
   const [searchOpen, setSearchOpen] = useState(() => !!(restored?.search));
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);

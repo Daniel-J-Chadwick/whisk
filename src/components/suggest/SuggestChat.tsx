@@ -31,7 +31,7 @@ const PICK_CATEGORIES = [
   { value: "dinner", label: "Dinner", tags: ["dinner"] },
   { value: "any", label: "Any", tags: [] as string[] },
   { value: "breakfast", label: "Breakfast", tags: ["breakfast", "brunch"] },
-  { value: "appetizer", label: "Appetizer", tags: ["appetizer"] },
+  { value: "starter", label: "Starter", tags: ["starter", "appetizer"] },
   { value: "side dish", label: "Side Dish", tags: ["side dish", "salad"] },
   { value: "dessert", label: "Dessert", tags: ["dessert", "desserts", "baking"] },
   { value: "drinks", label: "Drinks", tags: ["drinks", "cocktail", "cocktails"] },
@@ -60,7 +60,7 @@ function filterByCategory(recipes: RecipeIndexEntry[], categoryValue: string, se
   // Filter by season/holiday if selected
   if (seasonValue && seasonValue !== "") {
     const seasonTags = seasonValue === "current"
-      ? ["spring", "summer", "fall", "winter"]
+      ? ["spring", "summer", "autumn", "winter"]
       : [seasonValue];
     const seasonFiltered = filtered.filter((r) =>
       r.tags.some((t) => seasonTags.some((st) => t.toLowerCase().includes(st)))
@@ -259,7 +259,7 @@ export function SuggestChat({ chatEnabled = false, recipes = [], mealPlan = [], 
   const seasonOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [
       { value: "", label: "Season" },
-      { value: "current", label: `${seasonal.season.charAt(0).toUpperCase() + seasonal.season.slice(1)}` },
+      { value: "current", label: seasonal.season === "fall" ? "Autumn" : `${seasonal.season.charAt(0).toUpperCase() + seasonal.season.slice(1)}` },
     ];
     for (const h of seasonal.upcomingHolidays.slice(0, 3)) {
       options.push({ value: h.name.toLowerCase(), label: h.name });
@@ -341,7 +341,7 @@ export function SuggestChat({ chatEnabled = false, recipes = [], mealPlan = [], 
           const cat = /\bbreakfast\b/.test(lower) ? "breakfast"
             : /\bdessert\b/.test(lower) ? "dessert"
             : /\blunch\b/.test(lower) ? "any"
-            : /\bappetizer\b/.test(lower) ? "appetizer"
+            : /\b(?:appetizer|starter)s?\b/.test(lower) ? "starter"
             : /\bsnack\b/.test(lower) ? "snack"
             : /\bdrink|cocktail\b/.test(lower) ? "drinks"
             : "dinner";

@@ -12,7 +12,7 @@ const SLOT_TAGS: Record<MealSlot, string[]> = {
   breakfast: ["breakfast", "brunch", "morning", "pancakes", "waffles", "eggs"],
   lunch: ["lunch", "salad", "sandwich", "soup", "wrap", "light"],
   dinner: ["dinner", "main", "entree", "entrée", "supper"],
-  snack: ["snack", "appetizer", "dip", "finger food", "side"],
+  snack: ["snack", "starter", "appetizer", "dip", "finger food", "side"],
   dessert: ["dessert", "desserts", "baking", "cake", "cookie", "sweet"],
   extra: [],
 };

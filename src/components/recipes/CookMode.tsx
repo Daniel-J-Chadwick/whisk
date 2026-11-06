@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Recipe } from "../../types";
 import { useRecipes } from "../../hooks/useRecipes";
 import { getLocal, CACHE_KEYS } from "../../lib/cache";
 import { useWakeLock } from "../../hooks/useWakeLock";
-import { classNames, parseTimerFromText, decodeEntities } from "../../lib/utils";
+import { classNames, parseTimerFromText, scaleIngredient } from "../../lib/utils";
+import { stepIngredients } from "../../lib/step-amounts";
 import { LoadingSpinner } from "../ui/LoadingSpinner";
 import { Stopwatch, Check } from "../ui/Icon";
 import { StepText } from "./RecipeComponents";
@@ -22,6 +23,18 @@ export function CookMode({ onStartTimer }: CookModeProps) {
   const [recipe, setRecipe] = useState<Recipe | null>(cachedRecipe);
   const [isLoading, setIsLoading] = useState(!cachedRecipe);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  // Ingredients ticked off per step, keyed "step:ingredient"
+  const [gathered, setGathered] = useState<Set<string>>(new Set());
+  // Servings chosen on the recipe page (?servings=4), so amounts match the scaler there
+  const [searchParams] = useSearchParams();
+  const requestedServings = Number(searchParams.get("servings"));
+  const ingredients = useMemo(() => {
+    if (!recipe) return [];
+    const base = recipe.servings ?? 1;
+    const target = Number.isFinite(requestedServings) && requestedServings > 0 ? requestedServings : base;
+    return recipe.ingredients.map((ing) => scaleIngredient(ing, base, target));
+  }, [recipe, requestedServings]);
+  const servingsLabel = Number.isFinite(requestedServings) && requestedServings > 0 ? requestedServings : recipe?.servings;
 
   // Background refresh
   useEffect(() => {
@@ -38,6 +51,15 @@ export function CookMode({ onStartTimer }: CookModeProps) {
       wakeLock.release();
     };
   }, []);
+
+  const toggleGathered = (key: string) => {
+    setGathered((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const toggleStep = (index: number) => {
     setCompletedSteps((prev) => {
@@ -85,6 +107,7 @@ export function CookMode({ onStartTimer }: CookModeProps) {
             </span>
             <p className="text-xs text-stone-400 dark:text-stone-500 line-clamp-1">
               {recipe.title}
+              {servingsLabel ? ` · ${servingsLabel} servings` : ""}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -105,10 +128,10 @@ export function CookMode({ onStartTimer }: CookModeProps) {
       {recipe.ingredients.length > 0 && (
         <details className="border-b border-stone-200 dark:border-stone-800">
           <summary className="px-4 py-3 text-sm font-semibold text-stone-600 dark:text-stone-300 cursor-pointer select-none">
-            Ingredients ({recipe.ingredients.length})
+            Ingredients ({ingredients.length})
           </summary>
           <ul className="px-4 pb-3 space-y-1">
-            {recipe.ingredients.map((ing, i) => (
+            {ingredients.map((ing, i) => (
               <li key={i} className="text-sm text-stone-600 dark:text-stone-400">
                 {[ing.amount, ing.unit, ing.name].filter(Boolean).join(" ")}
               </li>
@@ -122,11 +145,22 @@ export function CookMode({ onStartTimer }: CookModeProps) {
         {recipe.steps.map((step, i) => {
           const timerMin = step.timerMinutes ?? parseTimerFromText(step.text);
           const done = completedSteps.has(i);
+          const uses = stepIngredients(step.text, ingredients);
 
           return (
-            <button
+            <div
               key={i}
+              role="button"
+              tabIndex={0}
+              aria-pressed={done}
               onClick={() => toggleStep(i)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleStep(i);
+                }
+              }}
               className={classNames(
                 "w-full text-left rounded-xl border p-4 transition-colors",
                 done
@@ -166,8 +200,42 @@ export function CookMode({ onStartTimer }: CookModeProps) {
                         : "text-stone-800 dark:text-stone-200"
                     )}
                   >
-                    <StepText text={step.text} ingredients={recipe.ingredients} />
+                    <StepText text={step.text} ingredients={ingredients} />
                   </p>
+
+                  {uses.length > 0 && !done && (
+                    <div className="mt-3">
+                      <p className="text-xs font-medium text-stone-400 dark:text-stone-500 mb-1.5">This step uses</p>
+                      <ul className="flex flex-wrap gap-1.5">
+                        {uses.map((u) => {
+                          const key = `${i}:${u.label}`;
+                          const got = gathered.has(key);
+                          return (
+                            <li key={key}>
+                              <button
+                                type="button"
+                                aria-pressed={got}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleGathered(key);
+                                }}
+                                className={classNames(
+                                  "wk-pill inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors",
+                                  got
+                                    ? "border-orange-500 bg-orange-500/10 text-stone-400 line-through dark:text-stone-500"
+                                    : "border-stone-300 text-stone-700 dark:border-stone-600 dark:text-stone-300"
+                                )}
+                              >
+                                {got && <Check className="w-3 h-3 text-orange-500" />}
+                                <span className="font-medium">{u.amount}</span>
+                                <span>{u.label}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
 
                   {timerMin && (
                     <button
@@ -182,7 +250,7 @@ export function CookMode({ onStartTimer }: CookModeProps) {
                   )}
                 </div>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

@@ -30,7 +30,7 @@ export const ACCENT_OPTIONS: { value: "auto" | SeasonalAccent; label: string }[]
   { value: "auto", label: "Auto (date-based)" },
   { value: "spring", label: "Spring" },
   { value: "summer", label: "Summer" },
-  { value: "fall", label: "Fall" },
+  { value: "fall", label: "Autumn" },
   { value: "winter", label: "Winter" },
   { value: "valentine", label: "Valentine's Day" },
   { value: "stpatrick", label: "St. Patrick's Day" },

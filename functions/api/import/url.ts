@@ -641,7 +641,7 @@ function generateTags(data: RecipeData, ingredients: { name: string }[]): string
   const MEAL_PATTERNS: [string, RegExp][] = [
     ["breakfast", /\b(?:breakfast|brunch|pancake|waffle|omelette?|frittata|granola|oatmeal)\b/],
     ["dessert", /\b(?:dessert|cake|cookies?|brownies?|pie|tart|ice cream|pudding|mousse|cheesecake|fudge|candy|souffl[eé])\b/],
-    ["appetizer", /\b(?:appetizer|dip|hummus|bruschetta|crostini|spring rolls?|dumplings?|sliders?)\b/],
+    ["starter", /\b(?:appetizer|starter|dip|hummus|bruschetta|crostini|spring rolls?|dumplings?|sliders?)\b/],
     ["salad", /\b(?:salad|slaw|coleslaw)\b/],
     ["side dish", /\b(?:side dish|mashed potatoes?|roasted (?:vegetables|potatoes)|rice pilaf|couscous)\b/],
     ["drinks", /\b(?:cocktail|smoothie|lemonade|margarita|sangria|spritz|mojito)\b/],
@@ -668,10 +668,10 @@ function generateTags(data: RecipeData, ingredients: { name: string }[]): string
   }
 
   // Method from title
-  if (/\b(?:instant pot|pressure cook)/i.test(text)) tags.add("instant pot");
+  if (/\b(?:instant pot|pressure cook)/i.test(text)) tags.add("pressure cooker");
   if (/\b(?:slow cook|crock[- ]?pot)/i.test(text)) tags.add("slow cook");
   if (/\b(?:air fr[yi])/i.test(text)) tags.add("air fryer");
-  if (/\bgrill/i.test(text)) tags.add("grilling");
+  if (/\bgrill/i.test(text)) tags.add("bbq");
   if (/\b(?:one[- ]pot|one[- ]pan|sheet pan)/i.test(text)) tags.add("one-pot");
   if (/\bno[- ](?:cook|bake)/i.test(text)) tags.add("no-cook");
   if (/\bstir[- ]?fry/i.test(text)) tags.add("stir-fry");
@@ -687,7 +687,7 @@ function generateTags(data: RecipeData, ingredients: { name: string }[]): string
   const month = new Date().getMonth(); // 0-indexed
   if (month >= 2 && month <= 4) tags.add("spring");
   else if (month >= 5 && month <= 7) tags.add("summer");
-  else if (month >= 8 && month <= 10) tags.add("fall");
+  else if (month >= 8 && month <= 10) tags.add("autumn");
   else tags.add("winter");
 
   // Disambiguate: recipes with protein/main-dish keywords in the title
@@ -707,7 +707,7 @@ const MEAL_TAGS: Record<string, string> = {
   "main course": "dinner", "main dish": "dinner", "dinner": "dinner", "lunch": "dinner",
   "breakfast": "breakfast", "brunch": "brunch",
   "dessert": "dessert", "desserts": "dessert",
-  "appetizer": "appetizer", "appetizers": "appetizer", "starter": "appetizer",
+  "appetizer": "starter", "appetizers": "starter", "starter": "starter",
   "side dish": "side dish", "side": "side dish",
   "salad": "salad", "salads": "salad",
   "snack": "snack", "snacks": "snack",

@@ -5,6 +5,7 @@ import {
   type ProviderEnv,
   type VisionAttachment,
 } from "../../lib/ai-providers";
+import { ukTag } from "../../../src/lib/tags";
 import { dropMeaninglessGroups, findBlendSachets, looksLikeMealKit, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
 import { resolveSpiceBlends } from "../../lib/spice-blends";
 
@@ -89,7 +90,8 @@ function normalizeResult(raw: PhotoRecipeResult, candidateCount: number): PhotoR
   const difficulty = cleanText(raw.difficulty)?.toLowerCase();
   const tags = [...new Set((Array.isArray(raw.tags) ? raw.tags : [])
     .map((t) => cleanText(t)?.toLowerCase())
-    .filter((t): t is string => !!t))].slice(0, 8);
+    .filter((t): t is string => !!t)
+    .map(ukTag))].slice(0, 8);
 
   return {
     ...raw,

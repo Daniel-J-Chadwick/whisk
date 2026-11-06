@@ -136,6 +136,13 @@ interface Match {
   note?: { start: number; end: number };
 }
 
+/** The ingredients a step mentions, in order, with their amounts (for a per-step checklist). */
+export function stepIngredients(text: string, ingredients: StepIngredient[]): { label: string; amount: string }[] {
+  return annotateStep(text, ingredients)
+    .filter((s): s is Extract<StepSegment, { kind: "amount" }> => s.kind === "amount")
+    .map((s) => ({ label: s.ingredient, amount: s.text }));
+}
+
 export function annotateStep(text: string, ingredients: StepIngredient[]): StepSegment[] {
   const entries = buildEntries(ingredients);
   if (entries.length === 0) return [{ kind: "text", text }];

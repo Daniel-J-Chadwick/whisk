@@ -654,7 +654,7 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
             const drinkHiddenTags = new Set([
               "weeknight", "quick", "under 30 min", "under 30 minutes", "30 min",
               "meal prep", "one-pot", "sheet pan", "healthy", "low-carb", "keto",
-              "grilling", "baking", "slow cook", "instant pot", "air fryer", "stir-fry",
+              "bbq", "baking", "slow cook", "pressure cooker", "air fryer", "stir-fry",
             ]);
             const displayTags = isDrinks
               ? recipe.tags.filter((t) => !drinkHiddenTags.has(t))
@@ -913,6 +913,13 @@ export function RecipeDetail({ onStartTimer, onAddToShoppingList, onUndoShopping
                   >
                     <Sun className="w-3.5 h-3.5" />
                     {wakeLock.isActive ? "Screen On" : "Keep Screen On"}
+                  </button>
+                  {/* Cook mode at the servings chosen above, so amounts match */}
+                  <button
+                    onClick={() => navigate(`/recipes/${recipe.id}/cook?servings=${servings}`)}
+                    className="wk-pill flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border border-orange-500 bg-orange-500 text-white transition-colors hover:bg-orange-600"
+                  >
+                    Cook
                   </button>
                 </div>
 

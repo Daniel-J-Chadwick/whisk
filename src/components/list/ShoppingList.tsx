@@ -4,6 +4,7 @@ import type { ShoppingList as ShoppingListType, ShoppingCategory, ShoppingItem, 
 import { CATEGORY_LABELS, CATEGORY_ORDER, CATEGORY_EMOJI } from "../../lib/categories";
 import { abbreviateName, abbreviateUnit } from "../../lib/abbreviate";
 import { combineItemAmounts, isStapleIngredient, pluralizeForAmount, unitGroupKey } from "../../lib/grocery";
+import { findLeftovers } from "../../lib/leftovers";
 import { classNames, decodeEntities } from "../../lib/utils";
 import { EmptyState } from "../ui/EmptyState";
 import { Check, XMark, ShoppingCart, ArrowUpDown, Sparkles, Trash, Camera, MagnifyingGlass, SquareCheck, ClipboardList, RefreshCw, ChevronDown, ChevronUp, EllipsisVertical } from "../ui/Icon";
@@ -217,6 +218,13 @@ export function ShoppingList({
     }
     return result;
   }, [list.items]);
+
+  // Likely leftovers: partly used packs across the planned recipes, with recipes that use the rest
+  const leftovers = useMemo(
+    () => (plannedRecipeIds.length > 0 ? findLeftovers(combinedItems, recipeIndex, plannedRecipeIds) : []),
+    [combinedItems, recipeIndex, plannedRecipeIds]
+  );
+  const [showLeftovers, setShowLeftovers] = useState(false);
 
   // Filter items by text query
   const filteredItems = useMemo(() => {
@@ -912,6 +920,56 @@ export function ShoppingList({
                   </>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Likely leftovers from the planned recipes */}
+          {totalCount > 0 && leftovers.length > 0 && (
+            <div className="mx-4 mt-2 rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-900">
+              <button
+                type="button"
+                onClick={() => setShowLeftovers((v) => !v)}
+                aria-expanded={showLeftovers}
+                className="flex w-full items-center justify-between px-3 py-2 text-xs text-stone-500 dark:text-stone-400"
+              >
+                <span>
+                  {leftovers.length} likely leftover{leftovers.length !== 1 ? "s" : ""}:{" "}
+                  <span className="text-stone-700 dark:text-stone-300">{leftovers.map((l) => l.label).join(", ")}</span>
+                </span>
+                {showLeftovers ? <ChevronUp className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
+              </button>
+              {showLeftovers && (
+                <ul className="space-y-2.5 border-t border-stone-200 px-3 py-2.5 dark:border-stone-800">
+                  {leftovers.map((l) => (
+                    <li key={l.label} className="text-xs">
+                      <p className="text-stone-700 dark:text-stone-200">
+                        <span className="font-medium">{l.label}:</span> about {l.left} left
+                        <span className="text-stone-400 dark:text-stone-500"> (using {l.used} of {l.buy})</span>
+                      </p>
+                      {l.suggestions.length > 0 ? (
+                        <p className="mt-0.5 text-stone-500 dark:text-stone-400">
+                          Use it in{" "}
+                          {l.suggestions.map((r, i) => (
+                            <span key={r.id}>
+                              {i > 0 && (i === l.suggestions.length - 1 ? " or " : ", ")}
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/recipes/${r.id}`)}
+                                className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+                              >
+                                {r.title}
+                              </button>
+                            </span>
+                          ))}
+                        </p>
+                      ) : (
+                        <p className="mt-0.5 text-stone-400 dark:text-stone-500">None of your other recipes use it yet.</p>
+                      )}
+                    </li>
+                  ))}
+                  <li className="text-[11px] text-stone-400 dark:text-stone-500">Based on typical UK pack sizes.</li>
+                </ul>
+              )}
             </div>
           )}
 

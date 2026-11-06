@@ -26,21 +26,21 @@ interface HolidayDef {
 }
 
 const HOLIDAYS: HolidayDef[] = [
-  { name: "New Year's Day", tags: ["appetizer", "holiday"], keywords: ["party", "brunch", "champagne"], getDate: (y) => new Date(y, 0, 1) },
-  { name: "Super Bowl", tags: ["appetizer", "snack", "american"], keywords: ["wings", "dip", "nachos", "game day", "party food"], getDate: (y) => nthWeekdayOfMonth(y, 1, 0, 2) }, // 2nd Sunday in February
+  { name: "New Year's Day", tags: ["starter", "holiday"], keywords: ["party", "brunch", "champagne"], getDate: (y) => new Date(y, 0, 1) },
+  { name: "Super Bowl", tags: ["starter", "snack", "american"], keywords: ["wings", "dip", "nachos", "game day", "party food"], getDate: (y) => nthWeekdayOfMonth(y, 1, 0, 2) }, // 2nd Sunday in February
   { name: "Valentine's Day", tags: ["dinner", "dessert", "french", "italian"], keywords: ["romantic", "chocolate", "steak", "date night"], getDate: (y) => new Date(y, 1, 14) },
   { name: "St. Patrick's Day", tags: ["dinner", "holiday"], keywords: ["irish", "corned beef", "soda bread", "stew", "green"], getDate: (y) => new Date(y, 2, 17) },
   { name: "Easter", tags: ["brunch", "dinner", "baking", "holiday"], keywords: ["ham", "lamb", "deviled eggs", "hot cross buns", "brunch"], getDate: computeEasterForHolidays },
   { name: "Cinco de Mayo", tags: ["mexican", "dinner"], keywords: ["tacos", "margarita", "guacamole", "fiesta"], getDate: (y) => new Date(y, 4, 5) },
   { name: "Mother's Day", tags: ["brunch", "dessert", "baking"], keywords: ["brunch", "cake", "special", "tea"], getDate: (y) => nthWeekdayOfMonth(y, 4, 0, 2) }, // 2nd Sunday in May
-  { name: "Memorial Day", tags: ["grilling", "summer", "american"], keywords: ["bbq", "burgers", "cookout", "picnic"], getDate: (y) => lastWeekdayOfMonth(y, 4, 1) }, // Last Monday in May
-  { name: "Father's Day", tags: ["grilling", "dinner"], keywords: ["steak", "bbq", "grilling", "ribs"], getDate: (y) => nthWeekdayOfMonth(y, 5, 0, 3) }, // 3rd Sunday in June
-  { name: "4th of July", tags: ["grilling", "summer", "american"], keywords: ["bbq", "picnic", "red white blue", "cookout", "watermelon"], getDate: (y) => new Date(y, 6, 4) },
-  { name: "Labor Day", tags: ["grilling", "summer"], keywords: ["bbq", "cookout", "end of summer", "picnic"], getDate: (y) => nthWeekdayOfMonth(y, 8, 1, 1) }, // 1st Monday in September
-  { name: "Halloween", tags: ["dessert", "baking", "fall"], keywords: ["pumpkin", "spooky", "candy", "party", "fall treats"], getDate: (y) => new Date(y, 9, 31) },
-  { name: "Thanksgiving", tags: ["dinner", "fall", "holiday", "baking"], keywords: ["turkey", "stuffing", "pie", "cranberry", "sides", "gravy"], getDate: (y) => nthWeekdayOfMonth(y, 10, 4, 4) }, // 4th Thursday in November
+  { name: "Memorial Day", tags: ["bbq", "summer", "american"], keywords: ["bbq", "burgers", "cookout", "picnic"], getDate: (y) => lastWeekdayOfMonth(y, 4, 1) }, // Last Monday in May
+  { name: "Father's Day", tags: ["bbq", "dinner"], keywords: ["steak", "bbq", "grilling", "ribs"], getDate: (y) => nthWeekdayOfMonth(y, 5, 0, 3) }, // 3rd Sunday in June
+  { name: "4th of July", tags: ["bbq", "summer", "american"], keywords: ["bbq", "picnic", "red white blue", "cookout", "watermelon"], getDate: (y) => new Date(y, 6, 4) },
+  { name: "Labor Day", tags: ["bbq", "summer"], keywords: ["bbq", "cookout", "end of summer", "picnic"], getDate: (y) => nthWeekdayOfMonth(y, 8, 1, 1) }, // 1st Monday in September
+  { name: "Halloween", tags: ["dessert", "baking", "autumn"], keywords: ["pumpkin", "spooky", "candy", "party", "fall treats"], getDate: (y) => new Date(y, 9, 31) },
+  { name: "Thanksgiving", tags: ["dinner", "autumn", "holiday", "baking"], keywords: ["turkey", "stuffing", "pie", "cranberry", "sides", "gravy"], getDate: (y) => nthWeekdayOfMonth(y, 10, 4, 4) }, // 4th Thursday in November
   { name: "Christmas", tags: ["dinner", "dessert", "baking", "holiday", "winter"], keywords: ["cookies", "ham", "roast", "gingerbread", "festive"], getDate: (y) => new Date(y, 11, 25) },
-  { name: "New Year's Eve", tags: ["appetizer", "holiday"], keywords: ["party", "appetizers", "cocktails", "celebration"], getDate: (y) => new Date(y, 11, 31) },
+  { name: "New Year's Eve", tags: ["starter", "holiday"], keywords: ["party", "appetizers", "cocktails", "celebration"], getDate: (y) => new Date(y, 11, 31) },
 ];
 
 /** Placeholder — the real computeEaster is defined later, this avoids forward-reference issues */
@@ -118,8 +118,8 @@ export const SEASONAL_CATEGORIES: Record<string, SeasonalCategory[]> = {
 };
 
 const SEASONAL_COOKING: Record<string, string[]> = {
-  spring: ["light", "fresh", "salad", "grilling"],
-  summer: ["grilling", "no-cook", "fresh", "cold", "ice cream", "smoothie"],
+  spring: ["light", "fresh", "salad", "bbq"],
+  summer: ["bbq", "no-cook", "fresh", "cold", "ice cream", "smoothie"],
   fall: ["slow cook", "baking", "soup", "stew", "roast", "comfort food"],
   winter: ["slow cook", "baking", "soup", "stew", "comfort food", "one-pot", "hot"],
 };

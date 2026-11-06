@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
 import { getLocal, setLocal, CACHE_KEYS } from "../lib/cache";
 import type { TagIndex, TagDefinition } from "../types";
-import { PRESET_TAGS } from "../lib/tags";
+import { PRESET_TAGS, RETIRED_PRESET_TAGS, ukTag } from "../lib/tags";
 
 const DEFAULT_INDEX: TagIndex = {
   tags: PRESET_TAGS,
@@ -20,8 +20,25 @@ export function useTags() {
   useEffect(() => {
     api
       .get<TagIndex>("/tags")
-      .then((data) => {
+      .then((fetched) => {
+        let data = fetched;
         if (data) {
+          // UK names for US tags ("fall" -> "autumn"); retired US-only presets are dropped
+          // unless they were custom. Saved back once if anything changed.
+          const seen = new Set<string>();
+          const migratedTags: TagDefinition[] = [];
+          for (const t of data.tags) {
+            if (t.type === "preset" && RETIRED_PRESET_TAGS.has(t.name)) continue;
+            const name = ukTag(t.name);
+            if (seen.has(name)) continue;
+            seen.add(name);
+            migratedTags.push(name === t.name ? t : { ...t, name });
+          }
+          const migrated = migratedTags.length !== data.tags.length || migratedTags.some((t, i) => t !== data.tags[i]);
+          if (migrated) {
+            data = { ...data, tags: migratedTags };
+            api.put("/tags", { ...data, updatedAt: new Date().toISOString() }).catch(() => {});
+          }
           const existingNames = new Set(data.tags.map((t) => t.name));
           const missingPresets = PRESET_TAGS.filter(
             (p) => !existingNames.has(p.name)

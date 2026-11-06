@@ -18,15 +18,15 @@ interface AutoTagBody {
 // Preset tags excluding speed group (those are derived from time data)
 const PRESET_TAGS = [
   // Meal
-  "breakfast", "brunch", "dinner", "salad", "dessert", "appetizer", "snack", "side dish",
+  "breakfast", "brunch", "dinner", "salad", "dessert", "starter", "snack", "side dish",
   // Cuisine
   "italian", "mexican", "chinese", "thai", "indian", "japanese", "korean", "mediterranean", "american", "french",
   // Diet
   "vegetarian", "vegan", "gluten-free", "dairy-free", "keto", "low-carb", "healthy",
   // Method
-  "grilling", "baking", "slow cook", "instant pot", "one-pot", "air fryer", "no-cook", "stir-fry",
+  "bbq", "baking", "slow cook", "pressure cooker", "one-pot", "air fryer", "no-cook", "stir-fry",
   // Season
-  "summer", "fall", "winter", "spring", "holiday",
+  "summer", "autumn", "winter", "spring", "holiday",
 ];
 
 // POST /api/ai/auto-tag - AI-powered recipe tag suggestions

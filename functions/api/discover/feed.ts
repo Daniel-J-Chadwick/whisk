@@ -398,13 +398,13 @@ async function drainPendingCollections(
 /** Tags allowed for discover items — kept tight to avoid bloat */
 const DISCOVER_TAGS = [
   // Meal (maps to DiscoverCategory — but AI may be more accurate)
-  "breakfast", "brunch", "dinner", "salad", "dessert", "appetizer", "snack", "side dish", "drinks",
+  "breakfast", "brunch", "dinner", "salad", "dessert", "starter", "snack", "side dish", "drinks",
   // Cuisine
   "italian", "mexican", "chinese", "thai", "indian", "japanese", "korean", "mediterranean", "american", "french",
   // Diet
   "vegetarian", "vegan", "gluten-free", "keto", "healthy",
   // Method
-  "grilling", "baking", "slow cook", "instant pot", "one-pot", "air fryer", "no-cook", "stir-fry",
+  "bbq", "baking", "slow cook", "pressure cooker", "one-pot", "air fryer", "no-cook", "stir-fry",
 ] as const;
 
 const DISCOVER_TAG_SET = new Set<string>(DISCOVER_TAGS);
@@ -597,9 +597,9 @@ function keywordTagItem(item: ArchiveItem): string[] {
   }
 
   // Method detection
-  if (/\b(?:grill|grilled|grilling|bbq|barbecue)\b/.test(text)) tags.push("grilling");
+  if (/\b(?:grill|grilled|grilling|bbq|barbecue)\b/.test(text)) tags.push("bbq");
   else if (/\b(?:slow cook|crockpot|crock pot)\b/.test(text)) tags.push("slow cook");
-  else if (/\b(?:instant pot|pressure cook)\b/.test(text)) tags.push("instant pot");
+  else if (/\b(?:instant pot|pressure cook)\b/.test(text)) tags.push("pressure cooker");
   else if (/\b(?:air fr(?:y|yer|ied))\b/.test(text)) tags.push("air fryer");
   else if (/\b(?:one[- ]pot|one[- ]pan|sheet pan)\b/.test(text)) tags.push("one-pot");
   else if (/\b(?:no[- ]cook|no[- ]bake|raw)\b/.test(text)) tags.push("no-cook");
