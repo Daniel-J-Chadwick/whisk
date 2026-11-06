@@ -22,11 +22,16 @@ export interface StepIngredient {
   group?: string;
 }
 
-export type StepSegment = { kind: "text"; text: string } | { kind: "amount"; text: string; ingredient: string };
+export type StepSegment =
+  | { kind: "text"; text: string }
+  /** quiet: a bare count of 1 ("the onion"), listed in checklists but not shown inline. */
+  | { kind: "amount"; text: string; ingredient: string; quiet?: boolean };
 
 interface Entry {
   label: string;
   amount: string;
+  /** A bare count of 1 or less: obvious from the text, so not shown inline. */
+  quiet: boolean;
   phrases: string[];
   fullPhrase: string;
 }
@@ -98,14 +103,15 @@ function buildEntries(ingredients: StepIngredient[]): Entry[] {
     const amount = amountText(ing);
     if (!amount) continue;
     const { phrases, full } = phrasesFor(ing.name);
-    entries.push({ label: ing.name, amount, phrases, fullPhrase: full });
+    const quiet = !ing.unit?.trim() && parseTsp(ing.amount) <= 1;
+    entries.push({ label: ing.name, amount, quiet, phrases, fullPhrase: full });
   }
   for (const [name, tsp] of blends) {
     const { phrases: all, full } = phrasesFor(name);
     // Blend names overlap everyday words ("salt and pepper"), so require the blend word itself
     const last = full.split(" ").pop() ?? "";
     const phrases = all.filter((p) => p.split(" ").includes(last) && p.includes(" "));
-    entries.push({ label: name, amount: `${formatTsp(tsp)} tsp mix`, phrases, fullPhrase: full });
+    entries.push({ label: name, amount: `${formatTsp(tsp)} tsp mix`, quiet: false, phrases, fullPhrase: full });
   }
 
   // A phrase shared by two ingredients only counts for the one it fully names ("onion" vs "spring onion")
@@ -132,9 +138,16 @@ interface Match {
   end: number;
   entry: Entry;
   length: number;
+  /** Matched on part of the name ("chicken" for "chicken mini fillets"). */
+  partial?: boolean;
   /** Replace this pantry note with the amount, not insert after the name. */
   note?: { start: number; end: number };
 }
+
+// After a part-name match: the same ingredient in another form (tag after it) ...
+const SAME_THING_AFTER = /^\s+(tenders|fillets|strips|slices|pieces|chunks|wedges|chips|cubes|florets|rings)\b/i;
+// ... or something made from it, which shouldn't get the raw ingredient's amount
+const MADE_FROM_AFTER = /^\s+(sauce|mixture|dressing|gravy|mash|marinade|batter|crumb|crust|topping|filling)\b/i;
 
 /** The ingredients a step mentions, in order, with their amounts (for a per-step checklist). */
 export function stepIngredients(text: string, ingredients: StepIngredient[]): { label: string; amount: string }[] {
@@ -152,7 +165,7 @@ export function annotateStep(text: string, ingredients: StepIngredient[]): StepS
     for (const phrase of entry.phrases) {
       const re = new RegExp(`(?<![\\w-])${escapeRegex(phrase)}(?:e?s)?(?![\\w-])`, "gi");
       for (let m = re.exec(text); m; m = re.exec(text)) {
-        candidates.push({ start: m.index, end: m.index + m[0].length, entry, length: phrase.length });
+        candidates.push({ start: m.index, end: m.index + m[0].length, entry, length: phrase.length, partial: phrase !== entry.fullPhrase });
       }
     }
   }
@@ -164,6 +177,12 @@ export function annotateStep(text: string, ingredients: StepIngredient[]): StepS
   for (const c of candidates) {
     if (used.has(c.entry)) continue;
     if (chosen.some((m) => c.start < m.end && m.start < c.end)) continue;
+    if (c.partial) {
+      const after = text.slice(c.end);
+      if (MADE_FROM_AFTER.test(after)) continue; // "katsu sauce" isn't the katsu paste
+      const same = SAME_THING_AFTER.exec(after);
+      if (same) c.end += same[0].length; // "chicken tenders [270 g]"
+    }
     // Already has an amount right in front ("0.5 tsp salt", "2 garlic cloves")
     if (AMOUNT_BEFORE.test(text.slice(Math.max(0, c.start - 14), c.start))) {
       used.add(c.entry);
@@ -175,11 +194,27 @@ export function annotateStep(text: string, ingredients: StepIngredient[]): StepS
   chosen.sort((a, b) => a.start - b.start);
 
   // "(see pantry for amount)" takes the amount of the ingredient just before it
+  // "(see pantry for amount)" belongs to the word(s) right before it: either a match that ends
+  // there, or an ingredient whose name starts with those words ("salt" -> "Salt for the Breadcrumbs").
   for (let n = PANTRY_NOTE.exec(text); n; n = PANTRY_NOTE.exec(text)) {
-    const before = [...chosen].reverse().find((m) => m.end <= n!.index && !m.note);
-    if (before) before.note = { start: n.index, end: n.index + n[0].length };
+    const note = { start: n.index, end: n.index + n[0].length };
+    const adjacent = chosen.find((m) => !m.note && m.end <= note.start && /^\s*$/.test(text.slice(m.end, note.start)));
+    if (adjacent) {
+      adjacent.note = note;
+      continue;
+    }
+    const tail = words(text.slice(Math.max(0, note.start - 40), note.start)).slice(-3);
+    for (let k = tail.length; k >= 1; k--) {
+      const lead = tail.slice(-k).join(" ");
+      const entry = entries.find((e) => e.fullPhrase === lead || e.fullPhrase.startsWith(`${lead} `));
+      if (entry) {
+        chosen.push({ start: note.start, end: note.start, entry, length: lead.length, note });
+        break;
+      }
+    }
   }
   PANTRY_NOTE.lastIndex = 0;
+  chosen.sort((a, b) => a.start - b.start);
 
   const segments: StepSegment[] = [];
   let pos = 0;
@@ -189,11 +224,11 @@ export function annotateStep(text: string, ingredients: StepIngredient[]): StepS
   for (const m of chosen) {
     if (m.note) {
       pushText(text.slice(pos, m.note.start));
-      segments.push({ kind: "amount", text: m.entry.amount, ingredient: m.entry.label });
+      segments.push({ kind: "amount", text: m.entry.amount, ingredient: m.entry.label, quiet: m.entry.quiet });
       pos = m.note.end;
     } else {
       pushText(text.slice(pos, m.end));
-      segments.push({ kind: "amount", text: m.entry.amount, ingredient: m.entry.label });
+      segments.push({ kind: "amount", text: m.entry.amount, ingredient: m.entry.label, quiet: m.entry.quiet });
       pos = m.end;
     }
   }

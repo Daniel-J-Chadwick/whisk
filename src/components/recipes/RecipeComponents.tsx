@@ -173,7 +173,7 @@ export function StepText({ text, ingredients }: { text: string; ingredients?: In
       {annotateStep(decoded, ingredients).map((seg, i) =>
         seg.kind === "text" ? (
           <span key={i}>{seg.text}</span>
-        ) : (
+        ) : seg.quiet ? null : (
           <span
             key={i}
             title={seg.ingredient}
