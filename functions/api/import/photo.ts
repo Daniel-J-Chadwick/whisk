@@ -5,6 +5,7 @@ import {
   type ProviderEnv,
   type VisionAttachment,
 } from "../../lib/ai-providers";
+import { looksLikeMealKit, normalizeMealKitIngredients } from "../../../src/lib/mealkit";
 
 const MAX_FILES = 4;
 const MAX_CANDIDATES = 12;
@@ -322,6 +323,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       throw new Error(`AI reply contained no JSON (${content.length} chars)`);
     }
     const result = normalizeResult(parseRecipeJson(content.slice(start, end + 1), content.length), candidateCount);
+    // Meal-kit cards: bare amounts are grams, and spice sachets become everyday spices.
+    if (looksLikeMealKit(result.ingredients.map((i) => ({ name: i.name, unit: i.unit ?? undefined })))) {
+      result.ingredients = normalizeMealKitIngredients(
+        result.ingredients.map((i) => ({ name: i.name, amount: i.amount ?? undefined, unit: i.unit ?? undefined, group: i.group ?? undefined, category: i.category ?? undefined })),
+        { bareAmountsAreMetric: true }
+      ).map((i) => ({ name: i.name, amount: i.amount ?? null, unit: i.unit ?? null, group: i.group ?? null, category: i.category ?? null }));
+    }
 
     console.log(`[Whisk] RecipePhoto config=${configMs}ms upload=${uploadProcessMs}ms vision=${visionMs}ms total=${totalMs}ms photo=${photoSizeKB}KB ingredients=${result.ingredients?.length ?? 0} steps=${result.steps?.length ?? 0}`);
     waitUntil(logScanInteraction(env.WHISK_KV, {

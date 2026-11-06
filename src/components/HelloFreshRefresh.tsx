@@ -1,0 +1,141 @@
+import { useState } from "react";
+import type { Ingredient, Recipe, RecipeIndexEntry, RecipePhoto, Step } from "../types";
+import { api } from "../lib/api";
+import { CACHE_KEYS, setLocal } from "../lib/cache";
+import { isHelloFreshUrl, looksLikeMealKit, normalizeMealKitIngredients } from "../lib/mealkit";
+import { Button } from "./ui/Button";
+
+interface ImportedRecipe {
+  title?: string;
+  description?: string;
+  ingredients?: Ingredient[];
+  steps?: Step[];
+  photos?: RecipePhoto[];
+  thumbnailUrl?: string;
+  prepTime?: number;
+  cookTime?: number;
+  servings?: number;
+}
+
+/** Three or more unitless amounts of 10+ ("450 potatoes"): a meal-kit list that lost its units. */
+function hasBareMetricAmounts(ingredients: Ingredient[]): boolean {
+  return ingredients.filter((i) => !i.unit && /^\d+(\.\d+)?$/.test((i.amount ?? "").trim()) && Number(i.amount) >= 10).length >= 3;
+}
+
+function isHelloFreshRecipe(r: Recipe): boolean {
+  return (
+    isHelloFreshUrl(r.source?.url) ||
+    /hellofresh/i.test(r.source?.attribution ?? "") ||
+    looksLikeMealKit(r.ingredients) ||
+    hasBareMetricAmounts(r.ingredients)
+  );
+}
+
+/**
+ * Re-imports every HelloFresh recipe in the book with the current importer:
+ * recipes with a HelloFresh link are fetched again (fresh ingredients, steps and step photos);
+ * scanned ones have their stored ingredients cleaned up. Notes, tags, favourites and cook
+ * history are kept.
+ */
+export function HelloFreshRefresh() {
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const run = async () => {
+    setRunning(true);
+    setSummary(null);
+    let refetched = 0;
+    let cleaned = 0;
+    let unchanged = 0;
+    const failed: string[] = [];
+    try {
+      setProgress("Finding HelloFresh recipes...");
+      const index = await api.get<RecipeIndexEntry[]>("/recipes");
+      const recipes: Recipe[] = [];
+      for (const entry of index) {
+        try {
+          const r = await api.get<Recipe>(`/recipes/${entry.id}`);
+          if (isHelloFreshRecipe(r)) recipes.push(r);
+        } catch {
+          // Skip recipes that fail to load
+        }
+      }
+
+      for (const [i, recipe] of recipes.entries()) {
+        setProgress(`Updating ${i + 1} of ${recipes.length}: ${recipe.title}`);
+        let updates: Partial<Recipe> | null = null;
+
+        if (isHelloFreshUrl(recipe.source?.url)) {
+          try {
+            const data = await api.post<ImportedRecipe>(
+              "/import/url",
+              { url: recipe.source!.url, downloadImage: true },
+              { timeoutMs: 60000 }
+            );
+            if (data.ingredients?.length && data.steps?.length) {
+              updates = {
+                title: data.title || recipe.title,
+                description: data.description || recipe.description,
+                ingredients: data.ingredients,
+                steps: data.steps,
+                ...(data.photos?.length ? { photos: data.photos } : {}),
+                ...(data.thumbnailUrl ? { thumbnailUrl: data.thumbnailUrl } : {}),
+                ...(data.prepTime ? { prepTime: data.prepTime } : {}),
+                ...(data.cookTime ? { cookTime: data.cookTime } : {}),
+                ...(data.servings ? { servings: data.servings } : {}),
+              };
+              refetched++;
+            }
+          } catch {
+            // Fall back to cleaning what's stored
+          }
+        }
+
+        if (!updates) {
+          const ingredients = normalizeMealKitIngredients(recipe.ingredients, { bareAmountsAreMetric: true }) as Ingredient[];
+          if (JSON.stringify(ingredients) === JSON.stringify(recipe.ingredients)) {
+            unchanged++;
+            continue;
+          }
+          updates = { ingredients };
+          cleaned++;
+        }
+
+        try {
+          const saved = await api.put<Recipe>(`/recipes/${recipe.id}`, updates);
+          setLocal(CACHE_KEYS.RECIPE(recipe.id), saved);
+        } catch {
+          failed.push(recipe.title);
+        }
+      }
+
+      const parts = [
+        `${recipes.length} HelloFresh recipe${recipes.length === 1 ? "" : "s"} found`,
+        refetched ? `${refetched} re-imported from HelloFresh` : "",
+        cleaned ? `${cleaned} cleaned up` : "",
+        unchanged ? `${unchanged} already up to date` : "",
+        failed.length ? `couldn't save: ${failed.join(", ")}` : "",
+      ].filter(Boolean);
+      setSummary(`${parts.join(". ")}. Re-add recipes to your shopping list to pick up the changes.`);
+    } catch (err) {
+      setSummary(`Re-import stopped: ${err instanceof Error ? err.message : "something went wrong"}`);
+    } finally {
+      setRunning(false);
+      setProgress("");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Button variant="secondary" fullWidth onClick={run} disabled={running}>
+        {running ? "Re-importing..." : "Re-import HelloFresh recipes"}
+      </Button>
+      <p className="text-xs text-stone-500 dark:text-stone-400">
+        {progress ||
+          summary ||
+          "Fetches HelloFresh recipes again with the latest importer: units fixed, spice sachets split into everyday spices, step photos added. Your notes, tags and favourites are kept."}
+      </p>
+    </div>
+  );
+}

@@ -15,6 +15,7 @@ import {
 import { validateClientJsonLd } from "../../lib/recipe-jsonld";
 import { wrapUntrusted } from "../../lib/untrusted";
 import { parseIngredientLines } from "../../../src/lib/ingredient-parse";
+import { normalizeMealKitIngredients } from "../../../src/lib/mealkit";
 
 interface Env extends ProviderEnv {
   WHISK_KV: KVNamespace;
@@ -484,7 +485,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // Extract video URL from the page
     const videoUrl = extractVideoUrl(html);
 
-    const parsedIngredients = parseIngredients(recipeData.recipeIngredient ?? []);
+    // HelloFresh: bare amounts are grams, "unit" is a count, and spice sachets become everyday spices.
+    const parsedIngredients = isHelloFresh
+      ? normalizeMealKitIngredients(parseIngredients(recipeData.recipeIngredient ?? []), { bareAmountsAreMetric: true })
+      : parseIngredients(recipeData.recipeIngredient ?? []);
     const tags = generateTags(recipeData, parsedIngredients);
     const rating = parseAggregateRating(recipeData.aggregateRating);
     const rawInstructions = recipeData.recipeInstructions ?? [];

@@ -14,6 +14,7 @@ import { Card } from "./ui/Card";
 import { AIConfigPanel } from "./AIConfigPanel";
 import { DemoLock } from "./ui/Demo";
 import { BookmarkletHelp } from "./import/BookmarkletHelp";
+import { HelloFreshRefresh } from "./HelloFreshRefresh";
 import { classNames } from "../lib/utils";
 import {
   ChevronLeft, Trash, Globe, Share, Check, ChevronDown, XMark, Sun, Moon, ComputerDesktop, CalendarDays,
@@ -1502,6 +1503,7 @@ export function Settings({ theme, onSetTheme, accentOverride, onSetAccent, style
               <DemoLock active={isDemoRestricted} reason="Book import/export is admin-only in the demo">
               <Card>
                 <div className="space-y-3">
+                  <HelloFreshRefresh />
                   {/* Export Book */}
                   <div>
                     <Button variant="secondary" fullWidth onClick={() => setShowExportPanel(!showExportPanel)}>
