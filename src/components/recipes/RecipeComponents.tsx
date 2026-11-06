@@ -3,7 +3,7 @@ import { classNames, decodeEntities, parseTimerFromText, parseFraction } from ".
 import { categorizeIngredient, CATEGORY_LABELS, CATEGORY_ORDER, categorizeIngredientForDrink, DRINK_CATEGORY_LABELS, DRINK_CATEGORY_ORDER } from "../../lib/categories";
 import { estimateGrams } from "../../lib/units";
 import { Check, Stopwatch } from "../ui/Icon";
-import { annotateStep } from "../../lib/step-amounts";
+import { annotateStep, annotateSteps, type StepSegment } from "../../lib/step-amounts";
 
 // ── Ingredient Row ──
 
@@ -165,12 +165,18 @@ export function GroupedIngredients({ ingredients, sort, resetKey, showGrams, che
 // ── Step Row ──
 
 /** Step text with each ingredient's amount shown at its first mention. */
-export function StepText({ text, ingredients }: { text: string; ingredients?: Ingredient[] }) {
+export function StepText({ text, ingredients, segments }: {
+  text: string;
+  ingredients?: Ingredient[];
+  /** Pre-computed for the whole recipe (annotateSteps), so "the remaining ..." knows earlier steps. */
+  segments?: StepSegment[];
+}) {
   const decoded = decodeEntities(text);
-  if (!ingredients?.length) return <>{decoded}</>;
+  const segs = segments ?? (ingredients?.length ? annotateStep(decoded, ingredients) : null);
+  if (!segs) return <>{decoded}</>;
   return (
     <>
-      {annotateStep(decoded, ingredients).map((seg, i) =>
+      {segs.map((seg, i) =>
         seg.kind === "text" ? (
           <span key={i}>{seg.text}</span>
         ) : seg.quiet ? null : (
@@ -187,7 +193,7 @@ export function StepText({ text, ingredients }: { text: string; ingredients?: In
   );
 }
 
-export function StepRow({ step, index, recipeId, onStartTimer, completed, onToggle, ingredients }: {
+export function StepRow({ step, index, recipeId, onStartTimer, completed, onToggle, ingredients, segments }: {
   step: Step;
   index: number;
   recipeId?: string;
@@ -196,6 +202,8 @@ export function StepRow({ step, index, recipeId, onStartTimer, completed, onTogg
   onToggle?: () => void;
   /** Ingredients (already scaled) to show amounts inline in the step text. */
   ingredients?: Ingredient[];
+  /** This step's annotated text, from annotateSteps over the whole recipe. */
+  segments?: StepSegment[];
 }) {
   const timerMin = step.timerMinutes ?? parseTimerFromText(step.text);
   return (
@@ -220,7 +228,7 @@ export function StepRow({ step, index, recipeId, onStartTimer, completed, onTogg
             ? "text-stone-400 dark:text-stone-500"
             : "dark:text-stone-200"
         )}>
-          <StepText text={step.text} ingredients={ingredients} />
+          <StepText text={step.text} ingredients={ingredients} segments={segments} />
         </p>
         {step.photoUrl && (
           <img
@@ -255,12 +263,14 @@ export function StepsList({ steps, recipeId, onStartTimer, completedSteps, onTog
   onToggleStep?: (index: number) => void;
 }) {
   const hasGroups = steps.some((s) => s.group);
+  // Annotate all steps together so "half the" / "the remaining" track what earlier steps used
+  const annotated = ingredients?.length ? annotateSteps(steps.map((s) => decodeEntities(s.text)), ingredients) : null;
 
   if (!hasGroups) {
     return (
       <ol className="space-y-4">
         {steps.map((step, i) => (
-          <StepRow key={i} step={step} index={i} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(i)} onToggle={onToggleStep ? () => onToggleStep(i) : undefined} ingredients={ingredients} />
+          <StepRow key={i} step={step} index={i} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(i)} onToggle={onToggleStep ? () => onToggleStep(i) : undefined} ingredients={ingredients} segments={annotated?.[i]} />
         ))}
       </ol>
     );
@@ -289,7 +299,7 @@ export function StepsList({ steps, recipeId, onStartTimer, completedSteps, onTog
           )}
           <ol className="space-y-4">
             {section.steps.map(({ step, originalIndex }) => (
-              <StepRow key={originalIndex} step={step} index={originalIndex} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(originalIndex)} onToggle={onToggleStep ? () => onToggleStep(originalIndex) : undefined} ingredients={ingredients} />
+              <StepRow key={originalIndex} step={step} index={originalIndex} recipeId={recipeId} onStartTimer={onStartTimer} completed={completedSteps?.has(originalIndex)} onToggle={onToggleStep ? () => onToggleStep(originalIndex) : undefined} ingredients={ingredients} segments={annotated?.[originalIndex]} />
             ))}
           </ol>
         </div>

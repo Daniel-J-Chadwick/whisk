@@ -156,14 +156,58 @@ export function stepIngredients(text: string, ingredients: StepIngredient[]): { 
     .map((s) => ({ label: s.ingredient, amount: s.text }));
 }
 
-export function annotateStep(text: string, ingredients: StepIngredient[]): StepSegment[] {
+/** How much of each ingredient earlier steps used, for "the remaining ...". */
+export interface StepState {
+  used: Map<string, number>;
+}
+
+/**
+ * Annotate a recipe's steps in order. "Two thirds of the seasoning" in one step and
+ * "the remaining seasoning" in a later one show 2/3 and 1/3 of the amount.
+ */
+export function annotateSteps(texts: string[], ingredients: StepIngredient[]): StepSegment[][] {
+  const state: StepState = { used: new Map() };
+  return texts.map((t) => annotateStep(t, ingredients, state));
+}
+
+/** Ingredients listed in annotated segments (for the cook mode checklist). */
+export function segmentIngredients(segments: StepSegment[]): { label: string; amount: string }[] {
+  return segments
+    .filter((s): s is Extract<StepSegment, { kind: "amount" }> => s.kind === "amount")
+    .map((s) => ({ label: s.ingredient, amount: s.text }));
+}
+
+// "half the", "two thirds of the", "a quarter of", "the remaining", "the rest of the" right before a mention
+const FRACTION_BEFORE =
+  /\b(half|a half|one half|two thirds|2\/3|a third|one third|1\/3|a quarter|one quarter|1\/4|three quarters|3\/4|the remaining|remaining|the rest)\s+(?:of\s+)?(?:the\s+|your\s+)?$/i;
+const FRACTIONS: Record<string, number> = {
+  half: 0.5, "a half": 0.5, "one half": 0.5,
+  "two thirds": 2 / 3, "2/3": 2 / 3, "a third": 1 / 3, "one third": 1 / 3, "1/3": 1 / 3,
+  "a quarter": 0.25, "one quarter": 0.25, "1/4": 0.25, "three quarters": 0.75, "3/4": 0.75,
+};
+
+/** "3 tsp mix" × 2/3 -> "2 tsp mix"; "450 g" × 0.5 -> "225 g". */
+export function scaleAmountText(amount: string, factor: number): string {
+  const m = /^(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)(.*)$/.exec(amount.trim());
+  if (!m) return amount;
+  const value = parseTsp(m[1]) * factor;
+  const rest = m[2] ?? "";
+  let text: string;
+  if (/^\s*(tsp|tbsp)\b/.test(rest) || value < 10) text = formatTsp(value);
+  else if (value >= 50) text = String(Math.round(value / 5) * 5);
+  else text = String(Math.round(value));
+  return `${text}${rest}`;
+}
+
+export function annotateStep(text: string, ingredients: StepIngredient[], state?: StepState): StepSegment[] {
   const entries = buildEntries(ingredients);
   if (entries.length === 0) return [{ kind: "text", text }];
 
   const candidates: Match[] = [];
   for (const entry of entries) {
     for (const phrase of entry.phrases) {
-      const re = new RegExp(`(?<![\\w-])${escapeRegex(phrase)}(?:e?s)?(?![\\w-])`, "gi");
+      // Names store "&" as "and"; match either in the step text
+      const re = new RegExp(`(?<![\\w-])${escapeRegex(phrase).replace(/\band\b/g, "(?:and|&)")}(?:e?s)?(?![\\w-])`, "gi");
       for (let m = re.exec(text); m; m = re.exec(text)) {
         candidates.push({ start: m.index, end: m.index + m[0].length, entry, length: phrase.length, partial: phrase !== entry.fullPhrase });
       }
@@ -221,6 +265,22 @@ export function annotateStep(text: string, ingredients: StepIngredient[]): StepS
   const pushText = (t: string) => {
     if (t) segments.push({ kind: "text", text: t });
   };
+  /** The amount for this mention, cut down when the text says "half the", "the remaining" and so on. */
+  const amountFor = (m: Match): string => {
+    const before = FRACTION_BEFORE.exec(text.slice(Math.max(0, m.start - 30), m.start));
+    const used = state?.used.get(m.entry.label) ?? 0;
+    if (!before) return m.entry.amount;
+    const word = before[1]!.toLowerCase();
+    if (/remaining|rest/.test(word)) {
+      state?.used.set(m.entry.label, 1);
+      return used > 0 && used < 1 ? scaleAmountText(m.entry.amount, 1 - used) : m.entry.amount;
+    }
+    const f = FRACTIONS[word];
+    if (!f) return m.entry.amount;
+    state?.used.set(m.entry.label, Math.min(1, used + f));
+    return scaleAmountText(m.entry.amount, f);
+  };
+
   for (const m of chosen) {
     if (m.note) {
       pushText(text.slice(pos, m.note.start));
@@ -228,7 +288,7 @@ export function annotateStep(text: string, ingredients: StepIngredient[]): StepS
       pos = m.note.end;
     } else {
       pushText(text.slice(pos, m.end));
-      segments.push({ kind: "amount", text: m.entry.amount, ingredient: m.entry.label, quiet: m.entry.quiet });
+      segments.push({ kind: "amount", text: amountFor(m), ingredient: m.entry.label, quiet: m.entry.quiet });
       pos = m.end;
     }
   }

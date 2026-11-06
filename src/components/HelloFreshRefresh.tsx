@@ -11,6 +11,10 @@ import {
   type BlendRecipe,
 } from "../lib/mealkit";
 import { Button } from "./ui/Button";
+import { PRESET_TAGS } from "../lib/tags";
+
+// Cuisine tags come from HelloFresh on re-import; earlier guesses are replaced
+const CUISINE_TAG_NAMES = new Set(PRESET_TAGS.filter((t) => t.group === "cuisine").map((t) => t.name));
 
 interface ImportedRecipe {
   title?: string;
@@ -22,6 +26,7 @@ interface ImportedRecipe {
   prepTime?: number;
   cookTime?: number;
   servings?: number;
+  tags?: string[];
 }
 
 /** Earlier split of a spice sachet into estimated spices. */
@@ -95,6 +100,11 @@ export function HelloFreshRefresh() {
                 ...(data.prepTime ? { prepTime: data.prepTime } : {}),
                 ...(data.cookTime ? { cookTime: data.cookTime } : {}),
                 ...(data.servings ? { servings: data.servings } : {}),
+                // Keep your own tags; replace cuisine tags with HelloFresh's
+                tags: [...new Set([
+                  ...recipe.tags.filter((t) => !CUISINE_TAG_NAMES.has(t)),
+                  ...(data.tags ?? []).filter((t) => CUISINE_TAG_NAMES.has(t) || !recipe.tags.includes(t)),
+                ])],
               };
               refetched++;
             }

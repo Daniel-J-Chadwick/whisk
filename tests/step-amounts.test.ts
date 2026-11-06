@@ -34,9 +34,11 @@ describe("annotateStep", () => {
     expect(render("Pour in the water for the sauce (see pantry for amount) and boil.", ings))
       .toBe("Pour in the water for the sauce [100 ml] and boil.");
   });
-  test("a split spice sachet shows its total", () => {
+  test("a split spice sachet shows its total, or a share of it", () => {
+    expect(render("Add the salt & pepper seasoning to the chips.", ings))
+      .toBe("Add the salt & pepper seasoning [2 1/4 tsp mix] to the chips.");
     expect(render("Add half the salt & pepper seasoning to the chips.", ings))
-      .toBe("Add half the salt & pepper seasoning [2 1/4 tsp mix] to the chips.");
+      .toBe("Add half the salt & pepper seasoning [1 1/4 tsp mix] to the chips.");
   });
   test("vague words and existing amounts are left alone", () => {
     expect(render("Drizzle with oil and season with salt and pepper.", ings))
@@ -78,5 +80,33 @@ describe("placement fixes", () => {
   test("quiet amounts still appear in the per-step checklist", async () => {
     const { stepIngredients } = await import("../src/lib/step-amounts");
     expect(stepIngredients("Beat the egg in a bowl.", kit)).toEqual([{ label: "Egg", amount: "1" }]);
+  });
+});
+
+describe("fractions across steps", () => {
+  test("two thirds then the remaining split the amount", async () => {
+    const { annotateSteps } = await import("../src/lib/step-amounts");
+    const out = annotateSteps(
+      ["Toss the chips with two thirds of the salt & pepper seasoning.", "Sprinkle the remaining salt & pepper seasoning over the chicken."],
+      ings
+    ).map((segs) => segs.map((s) => (s.kind === "amount" ? ` [${s.text}]` : s.text)).join(""));
+    expect(out).toEqual([
+      "Toss the chips with two thirds of the salt & pepper seasoning [1 1/2 tsp mix].",
+      "Sprinkle the remaining salt & pepper seasoning [3/4 tsp mix] over the chicken.",
+    ]);
+  });
+  test("half the follows the scaler", async () => {
+    const { annotateSteps } = await import("../src/lib/step-amounts");
+    const steps = ["Add half the potatoes."];
+    const one = annotateSteps(steps, ings)[0]!.find((s) => s.kind === "amount");
+    const two = annotateSteps(steps, ings.map((i) => scaleIngredient(i as never, 2, 4) as StepIngredient))[0]!.find((s) => s.kind === "amount");
+    expect(one).toMatchObject({ text: "225 g" });
+    expect(two).toMatchObject({ text: "450 g" });
+  });
+  test("scaleAmountText", async () => {
+    const { scaleAmountText } = await import("../src/lib/step-amounts");
+    expect(scaleAmountText("3 tsp mix", 2 / 3)).toBe("2 tsp mix");
+    expect(scaleAmountText("1 1/2 tsp", 0.5)).toBe("3/4 tsp");
+    expect(scaleAmountText("270 g", 0.5)).toBe("135 g");
   });
 });

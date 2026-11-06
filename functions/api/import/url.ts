@@ -495,7 +495,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           blends: await resolveSpiceBlends(env, findBlendSachets(rawParsedIngredients), { title: recipeData.name }).catch(() => ({})),
         })
       : rawParsedIngredients;
-    const tags = generateTags(recipeData, parsedIngredients);
+    // HelloFresh publishes its own cuisine; guessing from the title gives "indian" for katsu curry
+    const tags = generateTags(recipeData, parsedIngredients, { sourceCuisineOnly: isHelloFresh });
     const rating = parseAggregateRating(recipeData.aggregateRating);
     const rawInstructions = recipeData.recipeInstructions ?? [];
     const { steps: parsedSteps, notes } = parseInstructions(rawInstructions);
@@ -599,7 +600,12 @@ function backfillRecipeData(primary: RecipeData, secondary: RecipeData): void {
 // ── Auto-tag generation ─────────────────────────────────────
 
 /** Generate tags from recipe metadata using keyword matching against preset tags */
-function generateTags(data: RecipeData, ingredients: { name: string }[]): string[] {
+function generateTags(
+  data: RecipeData,
+  ingredients: { name: string }[],
+  /** Only take cuisine from the source's own data (HelloFresh), never guess it from the title. */
+  options: { sourceCuisineOnly?: boolean } = {}
+): string[] {
   const tags = new Set<string>();
   const title = (data.name ?? "").toLowerCase();
   const desc = (data.description ?? "").toLowerCase();
@@ -663,8 +669,10 @@ function generateTags(data: RecipeData, ingredients: { name: string }[]): string
     ["mediterranean", /\b(?:mediterranean|hummus|falafel|tahini|pita|tzatziki|shawarma)\b/],
     ["french", /\b(?:french|cr[eê]pe|croissant|souffl[eé]|gratin|ratatouille|bouillabaisse|quiche|brioche)\b/],
   ];
-  for (const [tag, pattern] of CUISINE_PATTERNS) {
-    if (pattern.test(text)) tags.add(tag);
+  if (!options.sourceCuisineOnly) {
+    for (const [tag, pattern] of CUISINE_PATTERNS) {
+      if (pattern.test(text)) tags.add(tag);
+    }
   }
 
   // Method from title
@@ -718,7 +726,7 @@ const MEAL_TAGS: Record<string, string> = {
 
 const CUISINE_TAGS = new Set([
   "italian", "mexican", "chinese", "thai", "indian", "japanese",
-  "korean", "mediterranean", "american", "french",
+  "korean", "mediterranean", "american", "french", "british",
 ]);
 
 const DIET_TAGS = new Set([
